@@ -1,11 +1,15 @@
 export interface AppConfig {
   port: number;
   dbUrl: string;
+  redisUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const dbUrl = env.DB_URL;
   if (!dbUrl) throw new Error("env error: DB_URL is missing");
+
+  const redisUrl = env.REDIS_URL;
+  if (!redisUrl) throw new Error("env error: REDIS_URL is missing");
 
   const port = Number(env.PORT ?? 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -14,5 +18,5 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     );
   }
 
-  return { port, dbUrl };
+  return { port, dbUrl, redisUrl };
 }

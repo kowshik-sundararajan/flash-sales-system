@@ -1,5 +1,5 @@
 import { loadConfig } from "../config.js";
-import { createMongoClient } from "../db.js";
+import { createMongoClient } from "../bootstrap.js";
 import {
   SALES_COLLECTION_NAME,
   type SaleDocument,

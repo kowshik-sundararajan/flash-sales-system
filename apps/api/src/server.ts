@@ -1,6 +1,6 @@
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { createMongoClient } from "./db.js";
+import { createMongoClient, createRedisClient } from "./bootstrap.js";
 import { MongoSalesRepository } from "./repositories/sales.repository.js";
 import { SalesService } from "./services/sales.service.js";
 
@@ -9,6 +9,8 @@ async function main() {
 
   const mongo = createMongoClient(config.dbUrl);
   const db = mongo.db();
+
+  const redis = createRedisClient(config.redisUrl);
 
   const salesService = new SalesService(new MongoSalesRepository(db));
   const app = buildApp({ salesService }, { logger: true });
@@ -24,10 +26,13 @@ async function main() {
   try {
     await mongo.connect();
     app.log.info("connected to MongoDB");
+    await redis.connect();
+    app.log.info("connected to Redis");
     await app.listen({ port: config.port });
   } catch (err) {
     app.log.fatal({ err }, "failed to start");
     await mongo.close().catch(() => {});
+    await redis.quit().catch(() => redis.disconnect());
     process.exit(1);
   }
 }
