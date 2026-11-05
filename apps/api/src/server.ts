@@ -1,10 +1,36 @@
 import { buildApp } from "./app.js";
+import { loadConfig } from "./config.js";
+import { createMongoClient } from "./db.js";
 
-const port = Number(process.env.PORT ?? 3000);
-const app = buildApp({ logger: true });
+async function main() {
+  const config = loadConfig(process.env);
 
-process.on("SIGTERM", () => {
-  void app.close().then(() => process.exit(0));
+  const mongo = createMongoClient(config.dbUrl);
+  await mongo.connect();
+  // const db = mongo.db();
+
+  const app = buildApp({ logger: true });
+  const shutdown = async (signal: string) => {
+    app.log.info({ signal }, "shutting down");
+    await app.close();
+    await mongo.close();
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+
+  try {
+    await mongo.connect();
+    app.log.info("connected to MongoDB");
+    await app.listen({ port: config.port });
+  } catch (err) {
+    app.log.fatal({ err }, "failed to start");
+    await mongo.close().catch(() => {});
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-await app.listen({ port });
