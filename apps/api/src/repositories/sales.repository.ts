@@ -1,9 +1,9 @@
 import type { Collection, Db } from "mongodb";
 import type { Sale } from "../models/sale.model.js";
 
-const SALES_COLLECTION_NAME = "sales";
+export const SALES_COLLECTION_NAME = "sales";
 
-type SaleDocument = Omit<Sale, "id"> & { _id: string };
+export type SaleDocument =Omit<Sale, "id"> & { _id: string };
 
 export interface SalesRepository {
   findById(id: string): Promise<Sale | null>;
