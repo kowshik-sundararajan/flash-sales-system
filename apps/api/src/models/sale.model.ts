@@ -15,5 +15,5 @@ export interface Product {
 export enum SaleStatus {
   UPCOMING = "upcoming",
   ACTIVE = "active",
-  EXPIRED = "expired",
+  ENDED = "ended",
 }

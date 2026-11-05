@@ -1,15 +1,17 @@
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createMongoClient } from "./db.js";
+import { MongoSalesRepository } from "./repositories/sales.repository.js";
+import { SalesService } from "./services/sales.service.js";
 
 async function main() {
   const config = loadConfig(process.env);
 
   const mongo = createMongoClient(config.dbUrl);
-  await mongo.connect();
-  // const db = mongo.db();
+  const db = mongo.db();
 
-  const app = buildApp({ logger: true });
+  const salesService = new SalesService(new MongoSalesRepository(db));
+  const app = buildApp({ salesService }, { logger: true });
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down");
     await app.close();
