@@ -14,6 +14,7 @@ const result = {
   status: SaleStatus.ACTIVE,
   startsAt: 1_000,
   endsAt: 2_000,
+  stock: 10,
   product: { id: "p1", name: "Best Headphones" },
 };
 

@@ -18,6 +18,7 @@ export function SaleWindow({
       {sale.status === "active" && (
         <p>Ends in {formatDuration(sale.endsAt - sale.serverTime)}</p>
       )}
+      {sale.status === "sold_out" && <p>The product has sold out!</p>}
       {sale.status === "ended" && <p>This sale has ended.</p>}
     </>
   );

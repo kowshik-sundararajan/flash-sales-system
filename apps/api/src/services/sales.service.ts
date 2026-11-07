@@ -7,6 +7,7 @@ export interface SaleStatusResult {
   status: SaleStatus;
   startsAt: number;
   endsAt: number;
+  stock: number;
   product: Product;
 }
 
@@ -20,10 +21,12 @@ export class SaleNotFoundError extends Error {
 export function getSaleStatus(
   { startsAt, endsAt }: Pick<Sale, "startsAt" | "endsAt">,
   now: number,
+  stock: number,
 ): SaleStatus {
   if (now < startsAt) return SaleStatus.UPCOMING;
   if (now >= endsAt) return SaleStatus.ENDED;
-  return SaleStatus.ACTIVE;
+
+  return stock > 0 ? SaleStatus.ACTIVE : SaleStatus.SOLD_OUT;
 }
 
 export class SalesService {
@@ -38,9 +41,10 @@ export class SalesService {
 
     return {
       saleId: sale.id,
-      status: getSaleStatus(sale, now),
+      status: getSaleStatus(sale, now, sale.stock),
       startsAt: sale.startsAt,
       endsAt: sale.endsAt,
+      stock: sale.stock,
       product: sale.product,
     };
   }
