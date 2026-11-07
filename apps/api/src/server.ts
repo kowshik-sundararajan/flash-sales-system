@@ -3,6 +3,8 @@ import { loadConfig } from "./config.js";
 import { createMongoClient, createRedisClient } from "./bootstrap.js";
 import { MongoSalesRepository } from "./repositories/sales.repository.js";
 import { SalesService } from "./services/sales.service.js";
+import { PurchasesService } from "./services/purchases.service.js";
+import { RedisPurchasesRepository } from "./repositories/purchase.repository.js";
 
 async function main() {
   const config = loadConfig(process.env);
@@ -13,11 +15,25 @@ async function main() {
   const redis = createRedisClient(config.redisUrl);
 
   const salesService = new SalesService(new MongoSalesRepository(db));
-  const app = buildApp({ salesService }, { logger: true });
+  const purchasesService = new PurchasesService(
+    new RedisPurchasesRepository(redis),
+  );
+
+  const app = buildApp({ salesService, purchasesService }, { logger: true });
+
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down");
     await app.close();
-    await mongo.close();
+    const results = await Promise.allSettled([
+      mongo.close(),
+      redis.quit().catch(() => redis.disconnect()),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        app.log.error({ err: result.reason }, "error closing connection");
+      }
+    }
+    app.log.info("shutdown complete");
     process.exit(0);
   };
   process.once("SIGTERM", () => void shutdown("SIGTERM"));

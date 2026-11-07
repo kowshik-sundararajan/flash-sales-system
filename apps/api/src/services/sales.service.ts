@@ -1,8 +1,9 @@
 import { SaleStatus, type Product, type Sale } from "../models/sale.model.js";
 import type { SalesRepository } from "../repositories/sales.repository.js";
+import type { SaleId } from "../schemas/sale.schema.js";
 
 export interface SaleStatusResult {
-  saleId: string;
+  saleId: SaleId;
   status: SaleStatus;
   startsAt: number;
   endsAt: number;
@@ -10,7 +11,7 @@ export interface SaleStatusResult {
 }
 
 export class SaleNotFoundError extends Error {
-  constructor(saleId: string) {
+  constructor(saleId: SaleId) {
     super(`sale not found: ${saleId}`);
     this.name = "SaleNotFoundError";
   }
@@ -29,7 +30,7 @@ export class SalesService {
   constructor(private readonly sales: SalesRepository) {}
 
   async getStatus(
-    saleId: string,
+    saleId: SaleId,
     now: number | undefined = Date.now(),
   ): Promise<SaleStatusResult> {
     const sale = await this.sales.findById(saleId);

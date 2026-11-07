@@ -49,10 +49,9 @@ describe("SalesService", () => {
 
   describe("getStatus", () => {
     const sale: Sale = {
-      id: "sale-1",
+      id: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
       product: { id: "product-1", name: "Best Headphones" },
       stock: 10,
-      perUserLimit: 1,
       startsAt: 1_000,
       endsAt: 2_000,
     };
@@ -71,11 +70,15 @@ describe("SalesService", () => {
         findById: vi.fn().mockResolvedValue(sale),
       };
 
-      const result = await new SalesService(repo).getStatus("sale-1");
+      const result = await new SalesService(repo).getStatus(
+        "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
+      );
 
-      expect(repo.findById).toHaveBeenCalledWith("sale-1");
+      expect(repo.findById).toHaveBeenCalledWith(
+        "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
+      );
       expect(result).toEqual({
-        saleId: "sale-1",
+        saleId: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
         status: SaleStatus.ACTIVE,
         startsAt: 1_000,
         endsAt: 2_000,
@@ -99,9 +102,11 @@ describe("SalesService", () => {
         findById: vi.fn().mockRejectedValue(error),
       };
 
-      await expect(new SalesService(repo).getStatus("sale-1")).rejects.toBe(
-        error,
-      );
+      await expect(
+        new SalesService(repo).getStatus(
+          "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
+        ),
+      ).rejects.toBe(error);
     });
   });
 });

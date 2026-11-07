@@ -1,9 +1,39 @@
+import type { Redis } from "ioredis";
 import { loadConfig } from "../config.js";
-import { createMongoClient } from "../bootstrap.js";
+import { createMongoClient, createRedisClient } from "../bootstrap.js";
+import type { Sale } from "../models/sale.model.js";
+import { saleKeys } from "../repositories/purchase.repository.js";
 import {
   SALES_COLLECTION_NAME,
   type SaleDocument,
 } from "../repositories/sales.repository.js";
+
+async function seedRedisSale(
+  redis: Redis,
+  sale: Pick<Sale, "id" | "startsAt" | "endsAt" | "stock">,
+): Promise<void> {
+  const stale: string[] = [];
+  for await (const keys of redis.scanStream({
+    match: saleKeys.all(sale.id),
+    count: 100,
+  })) {
+    stale.push(...(keys as string[]));
+  }
+
+  const tx = redis.multi();
+  if (stale.length > 0) tx.del(...stale);
+  tx.hset(saleKeys.sale(sale.id), {
+    startsAt: sale.startsAt,
+    endsAt: sale.endsAt,
+    stock: sale.stock,
+  });
+
+  const results = await tx.exec();
+  const failed = results?.find(([err]) => err);
+  if (!results || failed) {
+    throw new Error("failed to seed sale in Redis", { cause: failed?.[0] });
+  }
+}
 
 async function main() {
   const config = loadConfig(process.env);
@@ -12,26 +42,28 @@ async function main() {
 
   const startsAt = Date.now() + startsInSeconds * 1000;
   const sale: SaleDocument = {
-    _id: "sale-1",
+    _id: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
     product: { id: "product-1", name: "Best Headphones" },
     stock: 100,
-    perUserLimit: 1,
     startsAt,
     endsAt: startsAt + durationSeconds * 1000,
   };
 
   const mongo = createMongoClient(config.dbUrl);
+  const redis = createRedisClient(config.redisUrl, 5_000);
   try {
-    await mongo.connect();
+    await Promise.all([mongo.connect(), redis.connect()]);
     await mongo
       .db()
       .collection<SaleDocument>(SALES_COLLECTION_NAME)
       .replaceOne({ _id: sale._id }, sale, { upsert: true });
+    await seedRedisSale(redis, { ...sale, id: sale._id });
     console.log(
-      `seeded ${sale._id}: ${new Date(sale.startsAt).toISOString()} to ${new Date(sale.endsAt).toISOString()}`,
+      `seeded ${sale._id} (Mongo + Redis): ${new Date(sale.startsAt).toISOString()} to ${new Date(sale.endsAt).toISOString()}`,
     );
   } finally {
     await mongo.close();
+    await redis.quit().catch(() => redis.disconnect());
   }
 }
 

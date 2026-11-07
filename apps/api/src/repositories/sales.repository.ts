@@ -3,25 +3,17 @@ import type { Sale } from "../models/sale.model.js";
 
 export const SALES_COLLECTION_NAME = "sales";
 
-export type SaleDocument =Omit<Sale, "id"> & { _id: string };
+export type SaleDocument = Omit<Sale, "id"> & { _id: string };
 
 export interface SalesRepository {
   findById(id: string): Promise<Sale | null>;
 }
 
-function toSale({
-  _id,
-  product,
-  stock,
-  perUserLimit,
-  startsAt,
-  endsAt,
-}: SaleDocument): Sale {
+function toSale({ _id, product, stock, startsAt, endsAt }: SaleDocument): Sale {
   return {
     id: _id,
     product,
     stock,
-    perUserLimit,
     startsAt,
     endsAt,
   };

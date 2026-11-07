@@ -2,7 +2,6 @@ export interface Sale {
   id: string;
   product: Product;
   stock: number;
-  perUserLimit: number;
   startsAt: number;
   endsAt: number;
 }

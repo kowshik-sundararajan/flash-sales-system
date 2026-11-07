@@ -2,7 +2,7 @@ import { useSale } from "../hooks/useSale";
 import { ApiStatusBadge } from "./ApiStatusBadge";
 import { SaleCard } from "./SaleCard";
 
-const SALE_ID = "sale-1";
+const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
 
 function SaleContent({ saleId }: { saleId: string }) {
   const { sale, failed } = useSale(saleId);

@@ -4,8 +4,6 @@ import type { SaleStatusResponse } from "../types/sale";
 
 const POLL_MS = 1000;
 
-// The backend owns status and time, so just keep asking it.
-// sale: undefined while loading, null when the sale doesn't exist.
 export function useSale(saleId: string) {
   const [sale, setSale] = useState<SaleStatusResponse | null>();
   const [failed, setFailed] = useState(false);
