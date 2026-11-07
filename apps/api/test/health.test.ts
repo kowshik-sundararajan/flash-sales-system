@@ -12,6 +12,9 @@ test("GET /api/health returns 200 and status ok", async () => {
       purchase: async () => {
         throw new Error("unused");
       },
+      getPurchase: async () => {
+        throw new Error("unused");
+      },
     },
   });
 

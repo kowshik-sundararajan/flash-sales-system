@@ -13,7 +13,10 @@ function appWith(
 ) {
   return buildApp({
     salesService: { getStatus: overrides.getStatus ?? vi.fn() },
-    purchasesService: { purchase: overrides.purchase ?? vi.fn() },
+    purchasesService: {
+      purchase: overrides.purchase ?? vi.fn(),
+      getPurchase: vi.fn(),
+    },
   });
 }
 
@@ -65,7 +68,7 @@ describe("global error handler", () => {
         salesService: {
           getStatus: vi.fn().mockRejectedValue(new Error("mongo down")),
         },
-        purchasesService: { purchase: vi.fn() },
+        purchasesService: { purchase: vi.fn(), getPurchase: vi.fn() },
       },
       {
         logger: {

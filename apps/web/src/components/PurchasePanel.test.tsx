@@ -15,7 +15,7 @@ import type { SaleStatus } from "../types/sale";
 vi.mock("../lib/purchase/purchase");
 
 const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
-const USERNAME = "Kow42";
+const USERNAME = "johndoe30";
 
 afterEach(() => {
   cleanup();

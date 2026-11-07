@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { isValidUsername } from "./username";
 
-test.each(["kow", "Kow42", "a".repeat(32)])(
+test.each(["kow", "johndoe30", "a".repeat(32)])(
   "%s is a valid username",
   (name) => {
     expect(isValidUsername(name)).toBe(true);

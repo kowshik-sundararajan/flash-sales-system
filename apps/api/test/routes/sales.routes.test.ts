@@ -21,7 +21,7 @@ const result = {
 function appWith(getStatus: SalesService["getStatus"]) {
   return buildApp({
     salesService: { getStatus },
-    purchasesService: { purchase: vi.fn() },
+    purchasesService: { purchase: vi.fn(), getPurchase: vi.fn() },
   });
 }
 

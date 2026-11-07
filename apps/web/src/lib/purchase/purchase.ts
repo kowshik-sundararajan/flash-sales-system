@@ -1,4 +1,8 @@
-import { PURCHASE_CODE, type PurchaseResponse } from "../../types/purchase";
+import {
+  PURCHASE_CODE,
+  type Purchase,
+  type PurchaseResponse,
+} from "../../types/purchase";
 
 const PURCHASE_CODES: ReadonlySet<string> = new Set(
   Object.values(PURCHASE_CODE),
@@ -26,4 +30,25 @@ export async function postPurchase(
   if (isPurchaseCode(body?.code)) return body;
 
   throw new Error(`purchase failed: ${res.status}`);
+}
+
+export async function getPurchase(
+  saleId: string,
+  userId: string,
+): Promise<Purchase | null> {
+  const res = await fetch(
+    `/api/sales/${encodeURIComponent(saleId)}/purchases/${encodeURIComponent(userId)}`,
+  );
+
+  const body = await res.json().catch(() => null);
+
+  if (res.status === 200 && typeof body?.purchasedAt === "number") {
+    return { purchasedAt: body.purchasedAt };
+  }
+
+  if (res.status === 404 && body?.error === "purchase_not_found") {
+    return null;
+  }
+
+  throw new Error(`purchase lookup failed: ${res.status}`);
 }

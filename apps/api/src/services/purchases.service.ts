@@ -1,4 +1,4 @@
-import type { PurchaseResult } from "../models/purchase.model.js";
+import type { Purchase, PurchaseResult } from "../models/purchase.model.js";
 import type { PurchasesRepository } from "../repositories/purchase.repository.js";
 import type { SaleId } from "../schemas/sale.schema.js";
 import type { UserId } from "../schemas/userId.schema.js";
@@ -7,6 +7,16 @@ export class PurchaseFailedError extends Error {
   constructor(saleId: SaleId, userId: UserId, options?: ErrorOptions) {
     super(`purchase failed for sale: ${saleId} and user: ${userId}`, options);
     this.name = "PurchaseFailedError";
+  }
+}
+
+export class PurchaseLookupFailedError extends Error {
+  constructor(saleId: SaleId, userId: UserId, options?: ErrorOptions) {
+    super(
+      `purchase lookup failed for sale: ${saleId} and user: ${userId}`,
+      options,
+    );
+    this.name = "PurchaseLookupFailedError";
   }
 }
 
@@ -19,6 +29,18 @@ export class PurchasesService {
       return { code };
     } catch (cause) {
       throw new PurchaseFailedError(saleId, userId, { cause });
+    }
+  }
+
+  async getPurchase(saleId: SaleId, userId: UserId): Promise<Purchase | null> {
+    try {
+      const purchasedAt = await this.purchasesRepository.getPurchasedAt(
+        saleId,
+        userId,
+      );
+      return purchasedAt === null ? null : { purchasedAt };
+    } catch (cause) {
+      throw new PurchaseLookupFailedError(saleId, userId, { cause });
     }
   }
 }

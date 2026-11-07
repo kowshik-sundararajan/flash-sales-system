@@ -70,3 +70,55 @@ describe("RedisPurchasesRepository", () => {
     ).rejects.toBe(error);
   });
 });
+
+describe("RedisPurchasesRepository.getPurchasedAt", () => {
+  function fakeRedisGet(get: ReturnType<typeof vi.fn>) {
+    return { get } as unknown as Redis;
+  }
+
+  test("reads the user key under the sale's hash tag", async () => {
+    const get = vi.fn().mockResolvedValue(null);
+
+    await new RedisPurchasesRepository(fakeRedisGet(get)).getPurchasedAt(
+      SALE_ID,
+      USER_ID,
+    );
+
+    expect(get).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledWith(`{sale:${SALE_ID}}:user:${USER_ID}`);
+  });
+
+  test("returns the stored timestamp as a number", async () => {
+    const get = vi.fn().mockResolvedValue("1700000000123");
+
+    await expect(
+      new RedisPurchasesRepository(fakeRedisGet(get)).getPurchasedAt(
+        SALE_ID,
+        USER_ID,
+      ),
+    ).resolves.toBe(1_700_000_000_123);
+  });
+
+  test("returns null when the user has no purchase", async () => {
+    const get = vi.fn().mockResolvedValue(null);
+
+    await expect(
+      new RedisPurchasesRepository(fakeRedisGet(get)).getPurchasedAt(
+        SALE_ID,
+        USER_ID,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  test("lets Redis errors propagate untouched", async () => {
+    const error = new Error("connection closed");
+    const get = vi.fn().mockRejectedValue(error);
+
+    await expect(
+      new RedisPurchasesRepository(fakeRedisGet(get)).getPurchasedAt(
+        SALE_ID,
+        USER_ID,
+      ),
+    ).rejects.toBe(error);
+  });
+});

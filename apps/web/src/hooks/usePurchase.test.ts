@@ -8,7 +8,7 @@ import { PURCHASE_CODE, type PurchaseResponse } from "../types/purchase";
 vi.mock("../lib/purchase/purchase");
 
 const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
-const USER_ID = "kow42";
+const USER_ID = "johndoe30";
 const PURCHASED: PurchaseResponse = { code: PURCHASE_CODE.PURCHASED };
 
 const postPurchaseMock = vi.mocked(postPurchase);

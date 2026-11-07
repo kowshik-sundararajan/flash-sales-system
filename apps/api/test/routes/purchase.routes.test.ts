@@ -2,12 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 import { buildApp } from "../../src/app.js";
 import {
   PURCHASE_CODE,
+  type Purchase,
   type PurchaseCode,
 } from "../../src/models/purchase.model.js";
 import { saleIdSchema } from "../../src/schemas/sale.schema.js";
 import { userIdSchema } from "../../src/schemas/userId.schema.js";
 import {
   PurchaseFailedError,
+  PurchaseLookupFailedError,
   type PurchasesService,
 } from "../../src/services/purchases.service.js";
 
@@ -19,10 +21,13 @@ function purchaseReturning(code: PurchaseCode) {
   return vi.fn<PurchasesService["purchase"]>().mockResolvedValue({ code });
 }
 
-function appWith(purchase: PurchasesService["purchase"]) {
+function appWith(
+  purchase: PurchasesService["purchase"],
+  getPurchase: PurchasesService["getPurchase"] = vi.fn(),
+) {
   return buildApp({
     salesService: { getStatus: vi.fn() },
-    purchasesService: { purchase },
+    purchasesService: { purchase, getPurchase },
   });
 }
 
@@ -150,5 +155,89 @@ describe("POST /api/sales/:saleId/purchases", () => {
       expect(res.body).not.toContain("internal-host");
       expect(res.body).not.toContain(USER_ID);
     });
+  });
+});
+
+describe("GET /api/sales/:saleId/purchases/:userId", () => {
+  const PURCHASED_AT = 1_700_000_000_000;
+  const GET_URL = `${URL}/${USER_ID}`;
+
+  function getPurchaseReturning(purchase: Purchase | null) {
+    return vi.fn<PurchasesService["getPurchase"]>().mockResolvedValue(purchase);
+  }
+
+  function get(getPurchase: PurchasesService["getPurchase"], url = GET_URL) {
+    return appWith(vi.fn(), getPurchase).inject({ method: "GET", url });
+  }
+
+  test("200 with purchasedAt when the user has purchased", async () => {
+    const res = await get(getPurchaseReturning({ purchasedAt: PURCHASED_AT }));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ purchasedAt: PURCHASED_AT });
+  });
+
+  test("404 when the user has not purchased", async () => {
+    const res = await get(getPurchaseReturning(null));
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: "purchase_not_found" });
+  });
+
+  test("passes the sale id and user id to the service", async () => {
+    const getPurchase = getPurchaseReturning(null);
+
+    await get(getPurchase);
+
+    expect(getPurchase).toHaveBeenCalledOnce();
+    expect(getPurchase).toHaveBeenCalledWith(SALE_ID, USER_ID);
+  });
+
+  test("normalizes both ids (trim and lowercase) like the POST route", async () => {
+    const getPurchase = getPurchaseReturning(null);
+
+    await get(
+      getPurchase,
+      `/api/sales/${SALE_ID.toUpperCase()}/purchases/${USER_ID.toUpperCase()}`,
+    );
+
+    expect(getPurchase).toHaveBeenCalledWith(SALE_ID, USER_ID);
+  });
+
+  test.each([
+    {
+      name: "a non-UUID sale id",
+      url: `/api/sales/sale-1/purchases/${USER_ID}`,
+    },
+    { name: "a too-short user id", url: `${URL}/bo` },
+    { name: "a user id with invalid characters", url: `${URL}/john_doe` },
+    { name: "a too-long user id", url: `${URL}/${"a".repeat(33)}` },
+  ])("400 for $name, without calling the service", async ({ url }) => {
+    const getPurchase = getPurchaseReturning(null);
+
+    const res = await get(getPurchase, url);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("invalid_request");
+    expect(getPurchase).not.toHaveBeenCalled();
+  });
+
+  test("500 with a generic body when the service fails, leaking nothing", async () => {
+    const getPurchase = vi
+      .fn<PurchasesService["getPurchase"]>()
+      .mockRejectedValue(
+        new PurchaseLookupFailedError(
+          saleIdSchema.parse(SALE_ID),
+          userIdSchema.parse(USER_ID),
+          { cause: new Error("redis://user:pw@internal-host") },
+        ),
+      );
+
+    const res = await get(getPurchase);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: "internal_error" });
+    expect(res.body).not.toContain("internal-host");
+    expect(res.body).not.toContain(USER_ID);
   });
 });

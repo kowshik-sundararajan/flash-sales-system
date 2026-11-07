@@ -45,6 +45,7 @@ export const saleKeys = {
 
 export interface PurchasesRepository {
   purchase(saleId: SaleId, userId: UserId): Promise<PurchaseCode>;
+  getPurchasedAt(saleId: SaleId, userId: UserId): Promise<number | null>;
 }
 
 export class RedisPurchasesRepository implements PurchasesRepository {
@@ -59,5 +60,11 @@ export class RedisPurchasesRepository implements PurchasesRepository {
     );
 
     return code as PurchaseCode;
+  }
+
+  async getPurchasedAt(saleId: SaleId, userId: UserId): Promise<number | null> {
+    const purchasedAt = await this.redis.get(saleKeys.user(saleId, userId));
+
+    return purchasedAt === null ? null : Number(purchasedAt);
   }
 }

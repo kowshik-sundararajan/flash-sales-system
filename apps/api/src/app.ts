@@ -10,7 +10,7 @@ import type { PurchasesService } from "./services/purchases.service.js";
 
 export interface AppDeps {
   salesService: Pick<SalesService, "getStatus">;
-  purchasesService: Pick<PurchasesService, "purchase">;
+  purchasesService: Pick<PurchasesService, "purchase" | "getPurchase">;
 }
 
 export function buildApp(

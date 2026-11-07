@@ -14,3 +14,5 @@ export type PurchaseResponse = {
   remaining?: number;
   purchasedAt?: number;
 };
+
+export type Purchase = { purchasedAt: number };

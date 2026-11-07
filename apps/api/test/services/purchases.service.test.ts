@@ -8,14 +8,18 @@ import { saleIdSchema } from "../../src/schemas/sale.schema.js";
 import { userIdSchema } from "../../src/schemas/userId.schema.js";
 import {
   PurchaseFailedError,
+  PurchaseLookupFailedError,
   PurchasesService,
 } from "../../src/services/purchases.service.js";
 
 const SALE_ID = saleIdSchema.parse("8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f");
 const USER_ID = userIdSchema.parse("johndoe30");
 
-function serviceWithRepo(purchase: PurchasesRepository["purchase"]) {
-  return new PurchasesService({ purchase });
+function serviceWithRepo(
+  purchase: PurchasesRepository["purchase"],
+  getPurchasedAt: PurchasesRepository["getPurchasedAt"] = vi.fn(),
+) {
+  return new PurchasesService({ purchase, getPurchasedAt });
 }
 
 describe("purchase", () => {
@@ -65,6 +69,49 @@ describe("purchase", () => {
     await expect(result).rejects.toBeInstanceOf(PurchaseFailedError);
     await expect(result).rejects.toThrow(
       `purchase failed for sale: ${SALE_ID} and user: ${USER_ID}`,
+    );
+    await expect(result).rejects.toMatchObject({ cause });
+  });
+});
+
+describe("getPurchase", () => {
+  const PURCHASED_AT = 1_700_000_000_000;
+
+  test("returns { purchasedAt } when the user has a purchase", async () => {
+    const getPurchasedAt = vi.fn().mockResolvedValue(PURCHASED_AT);
+
+    const result = await serviceWithRepo(vi.fn(), getPurchasedAt).getPurchase(
+      SALE_ID,
+      USER_ID,
+    );
+
+    expect(result).toStrictEqual({ purchasedAt: PURCHASED_AT });
+    expect(getPurchasedAt).toHaveBeenCalledWith(SALE_ID, USER_ID);
+  });
+
+  test("returns null when the user has no purchase", async () => {
+    const getPurchasedAt = vi.fn().mockResolvedValue(null);
+
+    const result = await serviceWithRepo(vi.fn(), getPurchasedAt).getPurchase(
+      SALE_ID,
+      USER_ID,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("throws PurchaseLookupFailedError if repository fails", async () => {
+    const cause = new Error("redis down");
+    const getPurchasedAt = vi.fn().mockRejectedValue(cause);
+
+    const result = serviceWithRepo(vi.fn(), getPurchasedAt).getPurchase(
+      SALE_ID,
+      USER_ID,
+    );
+
+    await expect(result).rejects.toBeInstanceOf(PurchaseLookupFailedError);
+    await expect(result).rejects.toThrow(
+      `purchase lookup failed for sale: ${SALE_ID} and user: ${USER_ID}`,
     );
     await expect(result).rejects.toMatchObject({ cause });
   });

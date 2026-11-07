@@ -9,6 +9,8 @@ export const PURCHASE_CODE = {
 
 export type PurchaseCode = (typeof PURCHASE_CODE)[keyof typeof PURCHASE_CODE];
 
+export type Purchase = { purchasedAt: number };
+
 export type PurchaseResult = {
   code: PurchaseCode;
   remaining?: number;

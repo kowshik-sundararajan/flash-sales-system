@@ -1,12 +1,15 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { z } from "zod";
 import { PURCHASE_CODE, type PurchaseCode } from "../models/purchase.model.js";
-import { createPurchaseBodySchema } from "../schemas/purchase.schema.js";
+import {
+  createPurchaseBodySchema,
+  getPurchaseParamsSchema,
+} from "../schemas/purchase.schema.js";
 import { getSaleParamsSchema } from "../schemas/sale.schema.js";
 import type { PurchasesService } from "../services/purchases.service.js";
 
 export interface PurchasesRoutesOptions {
-  purchasesService: Pick<PurchasesService, "purchase">;
+  purchasesService: Pick<PurchasesService, "purchase" | "getPurchase">;
 }
 
 const HTTP_STATUS_BY_PURCHASE_CODE: Record<PurchaseCode, number> = {
@@ -41,5 +44,21 @@ export const purchasesRoutes: FastifyPluginAsync<
 
     const status = HTTP_STATUS_BY_PURCHASE_CODE[code];
     return reply.code(status).send({ code });
+  });
+
+  app.get("/api/sales/:saleId/purchases/:userId", async (request, reply) => {
+    const params = getPurchaseParamsSchema.safeParse(request.params);
+    if (!params.success) return sendInvalidRequest(reply, params.error);
+
+    const purchase = await purchasesService.getPurchase(
+      params.data.saleId,
+      params.data.userId,
+    );
+
+    if (!purchase) {
+      return reply.code(404).send({ error: "purchase_not_found" });
+    }
+
+    return reply.code(200).send(purchase);
   });
 };
