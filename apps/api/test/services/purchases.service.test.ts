@@ -12,7 +12,7 @@ import {
 } from "../../src/services/purchases.service.js";
 
 const SALE_ID = saleIdSchema.parse("8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f");
-const USER_ID = userIdSchema.parse("6b1f6f0e-3c1a-4a43-8f55-0d6c1b2a9e10");
+const USER_ID = userIdSchema.parse("johndoe30");
 
 function serviceWithRepo(purchase: PurchasesRepository["purchase"]) {
   return new PurchasesService({ purchase });

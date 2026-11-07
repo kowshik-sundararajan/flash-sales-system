@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { usePurchase } from "../hooks/usePurchase";
-import { useUserId } from "../hooks/useUserId";
+import { USERNAME_HINT, isValidUsername } from "../lib/username";
 import { PURCHASE_CODE, type PurchaseCode } from "../types/purchase";
 import type { SaleStatus } from "../types/sale";
 
@@ -20,14 +21,25 @@ interface PurchasePanelProps {
 }
 
 export function PurchasePanel({ saleId, status }: PurchasePanelProps) {
-  const { userId } = useUserId();
-  const { buy, pending, code, failed } = usePurchase(saleId, userId);
+  const [input, setInput] = useState("");
+  const username = input.trim();
+  const valid = isValidUsername(username);
+  const { buy, pending, code, failed } = usePurchase(saleId, username);
 
   return (
     <div>
+      <label>
+        Username{" "}
+        <input
+          value={input}
+          maxLength={32}
+          onChange={(e) => setInput(e.target.value)}
+        />
+      </label>
+      {username && !valid && <p>{USERNAME_HINT}</p>}
       <button
         type="button"
-        disabled={status !== "active" || pending}
+        disabled={status !== "active" || !valid || pending}
         onClick={() => void buy()}
       >
         {pending ? "Buying…" : "Buy now"}

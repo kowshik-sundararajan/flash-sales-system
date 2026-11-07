@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { SaleCard } from "./SaleCard";
 import type { SaleStatus, SaleStatusResponse } from "../types/sale";
-
-vi.mock("../hooks/useUserId", () => ({
-  useUserId: () => ({ userId: "2b7e4a90-6c1d-4f38-8a5e-9d0c3b1f7e42" }),
-}));
 
 const SALE: SaleStatusResponse = {
   saleId: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",

@@ -39,7 +39,7 @@ describe("global error handler", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/sales/${SALE_ID}/purchases`,
-      payload: { userId: "6b1f6f0e-3c1a-4a43-8f55-0d6c1b2a9e10" },
+      payload: { userId: "johndoe30" },
     });
 
     expect(res.statusCode).toBe(500);

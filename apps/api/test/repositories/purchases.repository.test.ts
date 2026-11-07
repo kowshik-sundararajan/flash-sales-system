@@ -6,7 +6,7 @@ import { saleIdSchema } from "../../src/schemas/sale.schema.js";
 import { userIdSchema } from "../../src/schemas/userId.schema.js";
 
 const SALE_ID = saleIdSchema.parse("8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f");
-const USER_ID = userIdSchema.parse("6b1f6f0e-3c1a-4a43-8f55-0d6c1b2a9e10");
+const USER_ID = userIdSchema.parse("johndoe30");
 
 function fakeRedis(evalImpl: ReturnType<typeof vi.fn>) {
   return { eval: evalImpl } as unknown as Redis;

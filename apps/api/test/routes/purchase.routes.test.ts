@@ -12,7 +12,7 @@ import {
 } from "../../src/services/purchases.service.js";
 
 const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
-const USER_ID = "6b1f6f0e-3c1a-4a43-8f55-0d6c1b2a9e10";
+const USER_ID = "johndoe30";
 const URL = `/api/sales/${SALE_ID}/purchases`;
 
 function purchaseReturning(code: PurchaseCode) {
@@ -116,7 +116,7 @@ describe("POST /api/sales/:saleId/purchases", () => {
       { name: "a missing body", body: undefined },
       { name: "an empty object", body: {} },
       { name: "a missing userId", body: { other: 1 } },
-      { name: "a non-UUID userId", body: { userId: "bob" } },
+      { name: "a too-short userId", body: { userId: "bo" } },
       { name: "a non-string userId", body: { userId: 123 } },
       { name: "a null userId", body: { userId: null } },
       { name: "an unknown extra field", body: { userId: USER_ID, extra: 1 } },

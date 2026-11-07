@@ -3,7 +3,7 @@ import { postPurchase } from "./purchase";
 import { PURCHASE_CODE } from "../../types/purchase";
 
 const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
-const USER_ID = "2b7e4a90-6c1d-4f38-8a5e-9d0c3b1f7e42";
+const USER_ID = "kow42";
 
 function stubFetch(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response);
