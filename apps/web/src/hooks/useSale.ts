@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchSaleStatus } from "../lib/sale";
+import { fetchSaleStatus } from "../lib/sale/sale";
 import type { SaleStatusResponse } from "../types/sale";
 
 const POLL_MS = 1000;
