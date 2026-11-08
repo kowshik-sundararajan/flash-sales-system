@@ -75,7 +75,7 @@ sequenceDiagram
         R-->>A: NOT_STARTED / ENDED / ALREADY_PURCHASED / SOLD_OUT
         A-->>U: 409
     else Redis down or slow
-        A-->>U: 503 (safe to retry)
+        A-->>U: 503 (outcome unknown, safe to retry)
     end
 ```
 
@@ -132,15 +132,17 @@ A purchase is decided entirely in Redis; workers copy it to Mongo afterwards. Th
 
 Body: `{"userId": "alice"}`. The answer is always `{"code": "..."}`.
 
-| HTTP | `code`                  | Meaning                                                                      |
-| ---- | ----------------------- | ---------------------------------------------------------------------------- |
-| 201  | `PURCHASED`             | You got the item                                                             |
-| 409  | `ALREADY_PURCHASED`     | This user already has one                                                    |
-| 409  | `SOLD_OUT`              | No stock left                                                                |
-| 409  | `NOT_STARTED` / `ENDED` | Outside the sale window                                                      |
-| 503  | `NOT_CONFIGURED`        | The sale is not set up in Redis                                              |
-| 400  | n/a                     | `invalid_request` (bad body)                                                 |
-| 503  | n/a                     | `temporarily_unavailable` (Redis down or slow). Not purchased, safe to retry |
+| HTTP | `code`                  | Meaning                                                                                    |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------------ |
+| 201  | `PURCHASED`             | You got the item                                                                           |
+| 409  | `ALREADY_PURCHASED`     | This user already has one                                                                  |
+| 409  | `SOLD_OUT`              | No stock left                                                                              |
+| 409  | `NOT_STARTED` / `ENDED` | Outside the sale window                                                                    |
+| 503  | `NOT_CONFIGURED`        | The sale is not set up in Redis                                                            |
+| 400  | n/a                     | `invalid_request` (bad body)                                                               |
+| 503  | n/a                     | `temporarily_unavailable` (Redis down or slow). Outcome unknown, safe to retry (see below) |
+
+**After a 503 the outcome is unknown.** The API stops waiting after 1 s, but Redis may still run the script afterwards. Retrying is safe: one item per user makes the purchase idempotent, so a retry returns `PURCHASED` or `ALREADY_PURCHASED`, never a second item. The web app checks the purchase before it reports a failure.
 
 #### `GET /api/sales/:saleId/purchases/:userId`
 
@@ -174,11 +176,36 @@ Redis keys for a sale share the hash tag `{sale:<id>}`.
 
 ## 3. Running the app
 
+### Prerequisites
+
+- Docker (with Compose v2). Docker must be running for `npm run check` too: the integration tests start their own Mongo and Redis containers.
+- Node.js 26.13 (see `.nvmrc`), only for running the tests outside Docker.
+
+### Start
+
 ```bash
 docker compose up --build
 ```
 
-Stop with `docker compose down` (add `-v` to delete the Mongo and Redis volumes).
+Open `http://localhost:8080`. Stop with `docker compose down` (add `-v` to delete the Mongo and Redis volumes).
+
+### Configure the sale
+
+The `seed` service sets up the sale from these variables, read from your shell or a `.env` file in the repo root:
+
+| Variable                 | Default | Meaning                                                        |
+| ------------------------ | ------- | -------------------------------------------------------------- |
+| `SALE_STARTS_AT`         | unset   | Start time, ISO 8601 (e.g. `2026-11-09T10:00:00+08:00`)        |
+| `SALE_ENDS_AT`           | unset   | End time, ISO 8601                                             |
+| `SALE_STARTS_IN_SECONDS` | `15`    | Start this many seconds from now, if `SALE_STARTS_AT` is unset |
+| `SALE_DURATION_SECONDS`  | `3600`  | Length of the sale, if `SALE_ENDS_AT` is unset                 |
+| `SALE_STOCK`             | `100`   | Number of items                                                |
+
+```bash
+SALE_STOCK=10 SALE_STARTS_IN_SECONDS=30 SALE_DURATION_SECONDS=300 npm run start
+```
+
+The seed is idempotent. On `docker compose up` it **keeps** a sale that is still running, with its purchases, so a restart loses nothing. It creates a fresh sale when the sale is missing from Mongo or Redis, or has ended. `npm run start` always creates a fresh sale (and deletes its purchases); new `SALE_*` values take effect on a reset.
 
 ## 4. Running the tests
 
@@ -189,16 +216,18 @@ npm ci
 npm run check
 ```
 
+The integration tests run the real API, two workers, Mongo and Redis. Besides the purchase flows, `invariants.test.ts` simulates a burst of requests through the API, waits for the workers to sync, and checks the real state of both stores: exactly the expected number sold, never more than the stock, no user twice, Mongo and Redis stock agree and are not negative, every buyer key has a Mongo purchase, the stream is drained and nothing was dead-lettered.
+
 ### Stress tests (k6)
 
 ```bash
 npm run stress
 ```
 
-Four scenarios:
+Runs four scenarios together. k6 reads the stock from `SALE_STOCK`:
 
 1. Hammer: one user fires 500 requests at once. Expected: 1 `PURCHASED`, 499 `ALREADY_PURCHASED`.
-2. Surge: 10,000 users, up to 500 at a time, go for the remaining 99 items. Expected: 99 `PURCHASED`, 9,901 `SOLD_OUT`.
+2. Surge: 10,000 users, up to 500 at a time, go for the rest of the stock. Expected with the default stock of 100: 99 `PURCHASED`, 9,901 `SOLD_OUT`.
 3. Watchers: 300 people refresh the sale page every second for 15 seconds.
 4. Flood: one address sends 1,000 requests without the `X-Load-Test: stress-test` header that the other scenarios send to skip the limit (demo only). Expected: at least one 429.
 
@@ -239,16 +268,18 @@ The bars are the measured p95 (surge 104 ms, watchers 114 ms). The line is the t
 | Dead-letter stream                                | **Fault isolation (poison-pill handling):** a malformed entry is moved aside instead of blocking the batch, so one bad message cannot stall the pipeline. **Recovery:** entries from a crashed worker are reclaimed after 30 s idle (self-healing), and the stream is kept for inspection                                                                                                                                                                 | Nothing replays or alerts on the dead-letter stream yet                                                                            |
 | Redis AOF with `appendfsync everysec`             | **Durability and throughput trade-off:** a batched fsync keeps writes fast while limiting loss to about 1 s, instead of `always` (an fsync per write, slow) or `no` (OS decides, unbounded loss)                                                                                                                                                                                                                                                          | A crash can lose about 1 s of acknowledged purchases. Not built: `always`, a replica with `WAIT`, a reconcile script               |
 | Delete acked stream entries                       | **Bounded memory and capacity:** Redis stays small so the hot path stays fast. **Single source of truth:** Mongo is the permanent record, and Redis is a transient buffer                                                                                                                                                                                                                                                                                 | No audit trail or replay from Redis                                                                                                |
+| No deadline on the purchase script                | **Simplicity and one clock:** the script uses only Redis `TIME`. An earlier version also compared it with a deadline from the API host's clock, which ties correctness to clock sync between hosts                                                                                                                                                                                                                                                        | A timed-out request has an unknown outcome. Covered by idempotent retries (one per user) and the web app's follow-up check         |
+| Idempotent seed                                   | **Durability:** restarting the stack keeps a running sale and its purchases. **Usability:** an ended or missing sale is recreated, so there is always a sale to try                                                                                                                                                                                                                                                                                       | Changing `SALE_*` needs an explicit `npm run start`                                                                                |
 
-## 7. Improvements
+## 6. Improvements
 
 Known gaps, and what I would do about each. None of these is built.
 
-| Gap                                  | Improvement                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| Identity                             | Real identity (login) and per-user limits;                              |
-| Idempotency                          | `Idempotency-Key` header if the rule ever allows several items per user |
-| Each worker syncs one static sale ID | Workers discover active sales from Mongo                                |
-| Dead-letter stream handling          | Alerting and reconciliation strategy                                    |
-| Single Redis and MongoDB nodes       | Redis replica with Sentinel, MongoDB replica set                        |
-| No end-to-end tests of the UI        | Browser tests (for example Playwright)                                  |
+| Gap                                  | Improvement                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity                             | Real identity (login) and per-user limits                                                                                                                                                                                                                                                                                        |
+| Idempotency                          | `Idempotency-Key` header if the rule ever allows several items per user                                                                                                                                                                                                                                                          |
+| Each worker syncs one static sale ID | Workers discover active sales from Mongo                                                                                                                                                                                                                                                                                         |
+| Dead-letter stream handling          | Alerting and reconciliation strategy                                                                                                                                                                                                                                                                                             |
+| Single Redis and MongoDB nodes       | Run on Redis Cluster and a Mongo replica set:<br>• **Redis Cluster:** removes the single Redis node as a point of failure and spreads many concurrent sales across nodes. One sale still runs on one shard.<br>• **Mongo replica set:** purchases stay safe if the primary is lost, and the sale page can read from secondaries. |
+| No end-to-end tests of the UI        | Browser tests (for example Playwright)                                                                                                                                                                                                                                                                                           |
