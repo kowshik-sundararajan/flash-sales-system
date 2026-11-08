@@ -30,7 +30,14 @@ declare module "vitest" {
     apiUrl: string;
     mongoUrl: string;
     redisUrl: string;
-    sales: { live: string; rush: string; upcoming: string; ended: string };
+    sales: {
+      live: string;
+      rush: string;
+      upcoming: string;
+      ended: string;
+      invariantsSoldOut: string;
+      invariantsPartial: string;
+    };
   }
 }
 
@@ -91,7 +98,15 @@ export default async function setup(project: TestProject) {
     rush: await createSale(25, -1_000, 600_000),
     upcoming: await createSale(10, 600_000, 1_200_000),
     ended: await createSale(10, -1_200_000, -600_000),
+    invariantsSoldOut: await createSale(30, -1_000, 600_000),
+    invariantsPartial: await createSale(50, -1_000, 600_000),
   };
+  const syncedSales = [
+    sales.live,
+    sales.rush,
+    sales.invariantsSoldOut,
+    sales.invariantsPartial,
+  ];
 
   const apiRedis = await connectRedis();
   const app = buildApp({
@@ -115,7 +130,7 @@ export default async function setup(project: TestProject) {
       name,
     );
     while (running) {
-      for (const saleId of [sales.live, sales.rush]) {
+      for (const saleId of syncedSales) {
         await sync.syncBatch(saleId).catch(() => sleep(100));
       }
     }

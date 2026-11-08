@@ -1,6 +1,35 @@
-import { describe, expect, test } from "vitest";
+import { afterAll, describe, expect, inject, test } from "vitest";
+import { createMongoClient, createRedisClient } from "../../src/bootstrap.js";
+import { saleIdSchema } from "../../src/schemas/sale.schema.js";
 
-/** What Mongo and Redis hold for one sale. */
+const api = inject("apiUrl");
+const soldOut = saleIdSchema.parse(inject("sales").invariantsSoldOut);
+const partial = saleIdSchema.parse(inject("sales").invariantsPartial);
+const json = { "content-type": "application/json" };
+
+const mongo = createMongoClient(inject("mongoUrl"));
+const redis = createRedisClient(inject("redisUrl"), () => {});
+await Promise.all([mongo.connect(), redis.connect()]);
+afterAll(async () => {
+  await mongo.close();
+  redis.destroy();
+});
+const db = mongo.db();
+
+import type { Db } from "mongodb";
+import type { RedisClient } from "../../src/bootstrap.js";
+import {
+  PURCHASES_COLLECTION_NAME,
+  saleKeys,
+} from "../../src/repositories/purchases.repository.js";
+import { PURCHASE_SYNC_GROUP } from "../../src/repositories/purchaseStream.repository.js";
+import {
+  SALES_COLLECTION_NAME,
+  type SaleDocument,
+} from "../../src/repositories/sales.repository.js";
+import type { SaleId } from "../../src/schemas/sale.schema.js";
+import type { UserId } from "../../src/schemas/userId.schema.js";
+
 export interface Snapshot {
   initialStock: number;
   remainingInMongo: number;
@@ -19,162 +48,151 @@ export interface Check {
   detail: string;
 }
 
-// 100 items, all sold, everything synced.
-const HEALTHY: Snapshot = {
-  initialStock: 100,
-  remainingInMongo: 0,
-  purchasesInMongo: 100,
-  distinctBuyers: 100,
-  stockInRedis: 0,
-  buyerKeysInRedis: 100,
-  streamLength: 0,
-  pendingEntries: 0,
-  deadLetters: 0,
-};
+export async function takeSnapshot(
+  db: Db,
+  redis: RedisClient,
+  saleId: SaleId,
+): Promise<Snapshot> {
+  const sale = await db
+    .collection<SaleDocument>(SALES_COLLECTION_NAME)
+    .findOne({ _id: saleId });
+  if (!sale) throw new Error(`sale not found: ${saleId}`);
 
+  const purchases = db.collection(PURCHASES_COLLECTION_NAME);
+
+  let buyerKeysInRedis = 0;
+  for await (const keysBatch of redis.scanIterator({
+    MATCH: saleKeys.user(saleId, "*" as UserId), // glob over every buyer key
+    COUNT: 1000,
+  })) {
+    buyerKeysInRedis += keysBatch.length;
+  }
+
+  const [purchasesInMongo, buyers, stock, streamLength, pending, deadLetters] =
+    await Promise.all([
+      purchases.countDocuments({ saleId }),
+      purchases.distinct("userId", { saleId }),
+      redis.hGet(saleKeys.sale(saleId), "stock"),
+      redis.xLen(saleKeys.stream(saleId)),
+      redis.xPending(saleKeys.stream(saleId), PURCHASE_SYNC_GROUP),
+      redis.xLen(saleKeys.deadLetter(saleId)),
+    ]);
+
+  return {
+    initialStock: sale.stock.initial,
+    remainingInMongo: sale.stock.remaining,
+    purchasesInMongo,
+    distinctBuyers: buyers.length,
+    stockInRedis: Number(stock),
+    buyerKeysInRedis,
+    streamLength,
+    pendingEntries: pending.pending,
+    deadLetters,
+  };
+}
+
+/** Every rule that must hold once the workers have synced a sale. */
 export function evaluateInvariants(
-  s: Snapshot,
-  expectedPurchases: number = s.initialStock,
+  snapshot: Snapshot,
+  expectedPurchases: number,
 ): Check[] {
-  const left = s.initialStock - s.purchasesInMongo;
+  const left = snapshot.initialStock - snapshot.purchasesInMongo;
 
   return [
     {
       name: "sold exactly the expected number of items",
-      ok: s.purchasesInMongo === expectedPurchases,
-      detail: `${s.purchasesInMongo} purchases in Mongo, expected ${expectedPurchases}`,
+      ok: snapshot.purchasesInMongo === expectedPurchases,
+      detail: `${snapshot.purchasesInMongo} purchases in Mongo, expected ${expectedPurchases}`,
     },
     {
       name: "never sold more than the stock",
-      ok: s.purchasesInMongo <= s.initialStock,
-      detail: `${s.purchasesInMongo} purchases, stock was ${s.initialStock}`,
+      ok: snapshot.purchasesInMongo <= snapshot.initialStock,
+      detail: `${snapshot.purchasesInMongo} purchases, stock was ${snapshot.initialStock}`,
     },
     {
       name: "no user bought twice",
-      ok: s.distinctBuyers === s.purchasesInMongo,
-      detail: `${s.distinctBuyers} distinct buyers for ${s.purchasesInMongo} purchases`,
+      ok: snapshot.distinctBuyers === snapshot.purchasesInMongo,
+      detail: `${snapshot.distinctBuyers} distinct buyers for ${snapshot.purchasesInMongo} purchases`,
     },
     {
       name: "Mongo stock matches the purchases",
-      ok: s.remainingInMongo === left,
-      detail: `remaining ${s.remainingInMongo}, expected ${left}`,
+      ok: snapshot.remainingInMongo === left,
+      detail: `remaining ${snapshot.remainingInMongo}, expected ${left}`,
     },
     {
       name: "Redis stock matches and is not negative",
-      ok: s.stockInRedis === left && s.stockInRedis >= 0,
-      detail: `Redis stock ${s.stockInRedis}, expected ${left}`,
+      ok: snapshot.stockInRedis === left && snapshot.stockInRedis >= 0,
+      detail: `Redis stock ${snapshot.stockInRedis}, expected ${left}`,
     },
     {
       name: "Redis buyer records match Mongo",
-      ok: s.buyerKeysInRedis === s.purchasesInMongo,
-      detail: `${s.buyerKeysInRedis} buyer keys, ${s.purchasesInMongo} purchases`,
+      ok: snapshot.buyerKeysInRedis === snapshot.purchasesInMongo,
+      detail: `${snapshot.buyerKeysInRedis} buyer keys, ${snapshot.purchasesInMongo} purchases`,
     },
     {
       name: "the stream is fully synced",
-      ok: s.streamLength === 0 && s.pendingEntries === 0,
-      detail: `${s.streamLength} entries left, ${s.pendingEntries} pending`,
+      ok: snapshot.streamLength === 0 && snapshot.pendingEntries === 0,
+      detail: `${snapshot.streamLength} entries left, ${snapshot.pendingEntries} pending`,
     },
     {
       name: "nothing was dead-lettered",
-      ok: s.deadLetters === 0,
-      detail: `${s.deadLetters} dead-lettered entries`,
+      ok: snapshot.deadLetters === 0,
+      detail: `${snapshot.deadLetters} dead-lettered entries`,
     },
   ];
 }
 
-const failing = (snapshot: Snapshot, expected?: number) =>
-  evaluateInvariants(snapshot, expected)
+export async function failingInvariants(
+  db: Db,
+  redis: RedisClient,
+  saleId: SaleId,
+  expectedPurchases: number,
+): Promise<string[]> {
+  const current = await takeSnapshot(db, redis, saleId);
+  return evaluateInvariants(current, expectedPurchases)
     .filter((check) => !check.ok)
-    .map((check) => check.name);
+    .map((check) => `${check.name}: ${check.detail}`);
+}
 
-describe("evaluateInvariants", () => {
-  test("a clean sell-out passes every check", () => {
-    expect(failing(HEALTHY)).toStrictEqual([]);
+// Every user presses "Buy now" `clicks` times, all at once.
+async function rush(saleId: string, users: number, clicks: number) {
+  const url = `${api}/api/sales/${saleId}/purchases`;
+  const responses = await Promise.all(
+    Array.from({ length: users * clicks }, (_, index) =>
+      fetch(url, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ userId: `shopper${index % users}` }),
+      }),
+    ),
+  );
+  return Promise.all(
+    responses.map(async (response) => (await response.json()).code),
+  );
+}
+
+// Sync is asynchronous, so poll until every invariant holds (or time out).
+const synced = { timeout: 15_000, interval: 200 };
+
+describe("invariants hold on the real state after a rush", () => {
+  test("200 shoppers, 2 clicks each, for 30 items: sold out, nothing oversold, lost or doubled", async () => {
+    const codes = await rush(soldOut, 200, 2);
+
+    expect(codes.filter((code) => code === "PURCHASED")).toHaveLength(30);
+    await expect
+      .poll(() => failingInvariants(db, redis, soldOut, 30), synced)
+      .toEqual([]);
   });
 
-  test("overselling is caught", () => {
-    const oversold = {
-      ...HEALTHY,
-      purchasesInMongo: 101,
-      distinctBuyers: 101,
-      buyerKeysInRedis: 101,
-      remainingInMongo: -1,
-      stockInRedis: -1,
-    };
+  test("20 shoppers, 3 clicks each, for 50 items: 20 sold, 30 left in both stores", async () => {
+    const codes = await rush(partial, 20, 3);
 
-    expect(failing(oversold)).toContain("never sold more than the stock");
-    expect(failing(oversold)).toContain(
-      "Redis stock matches and is not negative",
+    expect(codes.filter((code) => code === "PURCHASED")).toHaveLength(20);
+    expect(codes.filter((code) => code === "ALREADY_PURCHASED")).toHaveLength(
+      40,
     );
-  });
-
-  test("underselling is caught when everything should have sold", () => {
-    const undersold = {
-      ...HEALTHY,
-      purchasesInMongo: 99,
-      distinctBuyers: 99,
-      buyerKeysInRedis: 99,
-      remainingInMongo: 1,
-      stockInRedis: 1,
-    };
-
-    expect(failing(undersold)).toStrictEqual([
-      "sold exactly the expected number of items",
-    ]);
-  });
-
-  test("a lower expectation fits a sale that was not sold out", () => {
-    const partial = {
-      ...HEALTHY,
-      purchasesInMongo: 40,
-      distinctBuyers: 40,
-      buyerKeysInRedis: 40,
-      remainingInMongo: 60,
-      stockInRedis: 60,
-    };
-
-    expect(failing(partial, 40)).toStrictEqual([]);
-  });
-
-  test.each<[string, Partial<Snapshot>, string]>([
-    ["a user bought twice", { distinctBuyers: 99 }, "no user bought twice"],
-    [
-      "Mongo stock is out of step",
-      { remainingInMongo: 3 },
-      "Mongo stock matches the purchases",
-    ],
-    [
-      "Redis stock is out of step",
-      { stockInRedis: 2 },
-      "Redis stock matches and is not negative",
-    ],
-    [
-      "Redis has a buyer Mongo does not",
-      { buyerKeysInRedis: 101 },
-      "Redis buyer records match Mongo",
-    ],
-    [
-      "entries are left in the stream",
-      { streamLength: 4 },
-      "the stream is fully synced",
-    ],
-    [
-      "entries are still pending",
-      { pendingEntries: 2 },
-      "the stream is fully synced",
-    ],
-    [
-      "an entry was dead-lettered",
-      { deadLetters: 1 },
-      "nothing was dead-lettered",
-    ],
-  ])("%s", (_name, change, check) => {
-    expect(failing({ ...HEALTHY, ...change })).toContain(check);
-  });
-
-  test("every check explains itself", () => {
-    for (const check of evaluateInvariants(HEALTHY)) {
-      expect(check.detail).not.toBe("");
-    }
+    await expect
+      .poll(() => failingInvariants(db, redis, partial, 20), synced)
+      .toEqual([]);
   });
 });
