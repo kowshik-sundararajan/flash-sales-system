@@ -7,10 +7,10 @@ import {
 } from "../../src/models/purchase.model.js";
 import {
   PurchaseFailedError,
-  PurchaseLookupFailedError,
   type PurchasesService,
 } from "../../src/services/purchases.service.js";
 import { SALE_ID, USER_ID } from "../fixtures.js";
+import { ServiceUnavailableError } from "../../src/errors/errors.js";
 
 const URL = `/api/sales/${SALE_ID}/purchases`;
 
@@ -25,6 +25,7 @@ function appWith(
   return buildApp({
     salesService: { getStatus: vi.fn() },
     purchasesService: { purchase, getPurchase },
+    checkDependencies: async () => {},
   });
 }
 
@@ -134,7 +135,7 @@ describe("POST /api/sales/:saleId/purchases", () => {
   });
 
   describe("failures", () => {
-    test("500 with a generic body when the service fails, leaking nothing", async () => {
+    test("503 with Retry-After and a generic body when Redis fails, leaking nothing", async () => {
       const purchase = vi.fn<PurchasesService["purchase"]>().mockRejectedValue(
         new PurchaseFailedError(SALE_ID, USER_ID, {
           cause: new Error("redis://user:pw@internal-host"),
@@ -143,8 +144,9 @@ describe("POST /api/sales/:saleId/purchases", () => {
 
       const res = await post(purchase, { userId: USER_ID });
 
-      expect(res.statusCode).toBe(500);
-      expect(res.json()).toEqual({ error: "internal_error" });
+      expect(res.statusCode).toBe(503);
+      expect(res.headers["retry-after"]).toBe("1");
+      expect(res.json()).toEqual({ error: "temporarily_unavailable" });
       expect(res.body).not.toContain("internal-host");
       expect(res.body).not.toContain(USER_ID);
     });
@@ -217,19 +219,23 @@ describe("GET /api/sales/:saleId/purchases/:userId", () => {
     expect(getPurchase).not.toHaveBeenCalled();
   });
 
-  test("500 with a generic body when the service fails, leaking nothing", async () => {
+  test("503 with Retry-After and a generic body when Redis fails, leaking nothing", async () => {
     const getPurchase = vi
       .fn<PurchasesService["getPurchase"]>()
       .mockRejectedValue(
-        new PurchaseLookupFailedError(SALE_ID, USER_ID, {
-          cause: new Error("redis://user:pw@internal-host"),
-        }),
+        new ServiceUnavailableError(
+          `purchase lookup failed for sale: ${SALE_ID} and user: ${USER_ID}`,
+          {
+            cause: new Error("redis://user:pw@internal-host"),
+          },
+        ),
       );
 
     const res = await get(getPurchase);
 
-    expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ error: "internal_error" });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBe("1");
+    expect(res.json()).toEqual({ error: "temporarily_unavailable" });
     expect(res.body).not.toContain("internal-host");
     expect(res.body).not.toContain(USER_ID);
   });

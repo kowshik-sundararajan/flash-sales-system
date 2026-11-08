@@ -12,6 +12,12 @@ export const FAILED_MESSAGE: Message = {
   text: "Something went wrong. Please try again.",
 };
 
+// The buy failed and the follow-up check failed too: it may still have gone through.
+export const UNCONFIRMED_MESSAGE: Message = {
+  tone: "warning",
+  text: "We couldn't confirm your purchase. Press Check purchase in a moment to see if you got it.",
+};
+
 export const PURCHASE_MESSAGES: Record<PurchaseCode, Message> = {
   [PURCHASE_CODE.PURCHASED]: { tone: "success", text: "You got it!" },
   [PURCHASE_CODE.ALREADY_PURCHASED]: {

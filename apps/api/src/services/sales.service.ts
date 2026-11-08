@@ -1,4 +1,8 @@
 import {
+  isDependencyOutage,
+  ServiceUnavailableError,
+} from "../errors/errors.js";
+import {
   SaleStatus,
   type Product,
   type Sale,
@@ -43,7 +47,7 @@ export class SalesService {
     saleId: SaleId,
     now: number | undefined = Date.now(),
   ): Promise<SaleStatusResult> {
-    const sale = await this.salesRepository.findById(saleId);
+    const sale = await this.findSale(saleId);
     if (!sale) throw new SaleNotFoundError(saleId);
 
     return {
@@ -54,5 +58,16 @@ export class SalesService {
       stock: sale.stock,
       product: sale.product,
     };
+  }
+
+  private async findSale(saleId: SaleId): Promise<Sale | null> {
+    try {
+      return await this.salesRepository.findById(saleId);
+    } catch (cause) {
+      if (!isDependencyOutage(cause)) throw cause;
+      throw new ServiceUnavailableError(`sale lookup failed: ${saleId}`, {
+        cause,
+      });
+    }
   }
 }

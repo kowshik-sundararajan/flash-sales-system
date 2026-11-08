@@ -5,6 +5,7 @@ import {
   CHECK_NOT_FOUND_MESSAGE,
   CHECK_PURCHASED_MESSAGE,
   FAILED_MESSAGE,
+  UNCONFIRMED_MESSAGE,
   PURCHASE_MESSAGES,
   type Message,
 } from "../lib/messages";
@@ -52,8 +53,9 @@ export function PurchasePanel({ saleId, status }: PurchasePanelProps) {
 
   let message: Message | undefined;
   if (lastAction === "buy") {
-    if (buying.failed) message = FAILED_MESSAGE;
-    else if (buying.code) message = PURCHASE_MESSAGES[buying.code];
+    if (buying.failed) {
+      message = buying.unconfirmed ? UNCONFIRMED_MESSAGE : FAILED_MESSAGE;
+    } else if (buying.code) message = PURCHASE_MESSAGES[buying.code];
   } else if (lastAction === "check") {
     if (checking.failed) message = FAILED_MESSAGE;
     else if (checking.purchase) message = CHECK_PURCHASED_MESSAGE;

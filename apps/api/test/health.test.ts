@@ -1,8 +1,8 @@
-import { expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 
-test("GET /api/health returns 200 and status ok", async () => {
-  const app = buildApp({
+function appWith(checkDependencies: () => Promise<void>) {
+  return buildApp({
     salesService: {
       getStatus: async () => {
         throw new Error("unused");
@@ -16,12 +16,36 @@ test("GET /api/health returns 200 and status ok", async () => {
         throw new Error("unused");
       },
     },
+    checkDependencies,
+  });
+}
+
+describe("GET /api/health", () => {
+  test("returns 200 and status ok when the dependencies answer", async () => {
+    const checkDependencies = vi.fn().mockResolvedValue(undefined);
+    const app = appWith(checkDependencies);
+
+    const response = await app.inject({ method: "GET", url: "/api/health" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ok" });
+    expect(checkDependencies).toHaveBeenCalledOnce();
+
+    await app.close();
   });
 
-  const response = await app.inject({ method: "GET", url: "/api/health" });
+  test("returns 503 when a dependency does not answer, without saying why", async () => {
+    const secret = "redis://user:pw@internal-host";
+    const app = appWith(async () => {
+      throw new Error(`cannot reach ${secret}`);
+    });
 
-  expect(response.statusCode).toBe(200);
-  expect(response.json()).toEqual({ status: "ok" });
+    const response = await app.inject({ method: "GET", url: "/api/health" });
 
-  await app.close();
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ status: "unavailable" });
+    expect(response.body).not.toContain(secret);
+
+    await app.close();
+  });
 });

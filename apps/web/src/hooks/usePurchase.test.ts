@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { usePurchase } from "./usePurchase";
-import { postPurchase } from "../lib/purchase/purchase";
+import { getPurchase, postPurchase } from "../lib/purchase/purchase";
 import { PURCHASE_CODE, type PurchaseResponse } from "../types/purchase";
 
 vi.mock("../lib/purchase/purchase");
@@ -140,4 +140,48 @@ test("a failed purchase is also hidden once the username changes", async () => {
   rerender({ userId: "someoneelse" });
 
   expect(result.current.failed).toBe(false);
+});
+
+test("a failed request that still went through is reported as already bought", async () => {
+  postPurchaseMock.mockRejectedValue(new Error("purchase failed: 500"));
+  vi.mocked(getPurchase).mockResolvedValue({ purchasedAt: 1_700_000_000_000 });
+  const { result } = setup();
+
+  await act(() => result.current.buy());
+
+  expect(getPurchase).toHaveBeenCalledWith(SALE_ID, USER_ID);
+  expect(result.current.code).toBe(PURCHASE_CODE.ALREADY_PURCHASED);
+  expect(result.current.failed).toBe(false);
+});
+
+test("a failed request stays failed when the lookup finds no purchase", async () => {
+  postPurchaseMock.mockRejectedValue(new Error("purchase failed: 503"));
+  vi.mocked(getPurchase).mockResolvedValue(null);
+  const { result } = setup();
+
+  await act(() => result.current.buy());
+
+  expect(result.current.failed).toBe(true);
+  expect(result.current.unconfirmed).toBe(false);
+  expect(result.current.code).toBeUndefined();
+});
+
+test("a failed request stays failed when the lookup fails too", async () => {
+  postPurchaseMock.mockRejectedValue(new Error("purchase failed: 503"));
+  vi.mocked(getPurchase).mockRejectedValue(new Error("lookup failed: 503"));
+  const { result } = setup();
+
+  await act(() => result.current.buy());
+
+  expect(result.current.failed).toBe(true);
+  expect(result.current.unconfirmed).toBe(true); // we could not find out
+});
+
+test("a purchase that succeeds does not look anything up", async () => {
+  postPurchaseMock.mockResolvedValue(PURCHASED);
+  const { result } = setup();
+
+  await act(() => result.current.buy());
+
+  expect(getPurchase).not.toHaveBeenCalled();
 });

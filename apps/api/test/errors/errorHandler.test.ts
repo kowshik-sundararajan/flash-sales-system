@@ -1,8 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
-import { buildApp } from "../src/app.js";
-import type { PurchasesService } from "../src/services/purchases.service.js";
-import type { SalesService } from "../src/services/sales.service.js";
-import { SALE_ID, USER_ID } from "./fixtures.js";
+import { buildApp } from "../../src/app.js";
+import type { PurchasesService } from "../../src/services/purchases.service.js";
+import type { SalesService } from "../../src/services/sales.service.js";
+import { ServiceUnavailableError } from "../../src/errors/errors.js";
+import { SALE_ID, USER_ID } from "../fixtures.js";
 
 function appWith(
   overrides: {
@@ -16,6 +17,7 @@ function appWith(
       purchase: overrides.purchase ?? vi.fn(),
       getPurchase: vi.fn(),
     },
+    checkDependencies: async () => {},
   });
 }
 
@@ -48,6 +50,24 @@ describe("global error handler", () => {
     expect(res.json()).toEqual({ error: "internal_error" });
   });
 
+  test("a failed dependency becomes a 503 with Retry-After and a generic body", async () => {
+    const secret = "redis://user:pw@internal-host";
+    const app = appWith({
+      getStatus: vi.fn().mockRejectedValue(
+        new ServiceUnavailableError("redis down", {
+          cause: new Error(secret),
+        }),
+      ),
+    });
+
+    const res = await app.inject(`/api/sales/${SALE_ID}`);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBe("1");
+    expect(res.json()).toEqual({ error: "temporarily_unavailable" });
+    expect(res.body).not.toContain(secret);
+  });
+
   test("a 5xx error carrying its own statusCode is still hidden", async () => {
     const err = Object.assign(new Error("upstream detail"), {
       statusCode: 502,
@@ -68,6 +88,7 @@ describe("global error handler", () => {
           getStatus: vi.fn().mockRejectedValue(new Error("mongo down")),
         },
         purchasesService: { purchase: vi.fn(), getPurchase: vi.fn() },
+        checkDependencies: async () => {},
       },
       {
         logger: {

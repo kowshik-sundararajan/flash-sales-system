@@ -6,8 +6,11 @@ import { SalesService } from "./services/sales.service.js";
 import { PurchasesService } from "./services/purchases.service.js";
 import { RedisPurchasesRepository } from "./repositories/purchases.repository.js";
 import { createLogger } from "./logger.js";
+import { withTimeout } from "./lib/withTimeout.js";
 
 const logger = createLogger("api", process.env.LOG_LEVEL);
+
+const HEALTH_TIMEOUT_MS = 1_000;
 
 async function main() {
   const config = loadConfig(process.env);
@@ -24,8 +27,15 @@ async function main() {
     new RedisPurchasesRepository(redis),
   );
 
+  const checkDependencies = async () => {
+    await Promise.all([
+      withTimeout(redis.ping(), HEALTH_TIMEOUT_MS),
+      withTimeout(mongo.db().command({ ping: 1 }), HEALTH_TIMEOUT_MS),
+    ]);
+  };
+
   const app = buildApp(
-    { salesService, purchasesService },
+    { salesService, purchasesService, checkDependencies },
     { loggerInstance: logger },
   );
 

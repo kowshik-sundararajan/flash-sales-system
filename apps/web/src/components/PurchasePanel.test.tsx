@@ -165,6 +165,32 @@ test("shows a generic error banner when the purchase request fails", async () =>
   expect(message.closest(".banner")!.className).toContain("tone-danger");
 });
 
+test("a failed buy that actually went through is shown as already bought", async () => {
+  vi.mocked(postPurchase).mockRejectedValue(new Error("purchase failed: 503"));
+  vi.mocked(getPurchase).mockResolvedValue({ purchasedAt: 1_700_000_000_000 });
+  const { buy, type } = setup();
+  type(USERNAME);
+
+  fireEvent.click(buy);
+
+  expect(
+    await screen.findByText("You have already bought this item."),
+  ).toBeTruthy();
+});
+
+test("when a failed buy cannot be confirmed either, it says so and points to Check purchase", async () => {
+  vi.mocked(postPurchase).mockRejectedValue(new Error("purchase failed: 503"));
+  vi.mocked(getPurchase).mockRejectedValue(new Error("lookup failed: 503"));
+  const { buy, type } = setup();
+  type(USERNAME);
+
+  fireEvent.click(buy);
+
+  const message = await screen.findByText(/couldn't confirm your purchase/);
+  expect(message.textContent).toContain("Press Check purchase");
+  expect(message.closest(".banner")!.className).toContain("tone-warning");
+});
+
 test("while buying, the button says so and both actions are disabled", async () => {
   const request = deferred<{ code: typeof PURCHASE_CODE.PURCHASED }>();
   vi.mocked(postPurchase).mockReturnValue(request.promise);

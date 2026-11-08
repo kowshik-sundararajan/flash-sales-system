@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { ClientClosedError } from "redis";
 import {
   PURCHASE_CODE,
   type PurchaseCode,
@@ -6,10 +7,10 @@ import {
 import type { PurchasesRepository } from "../../src/repositories/purchases.repository.js";
 import {
   PurchaseFailedError,
-  PurchaseLookupFailedError,
   PurchasesService,
 } from "../../src/services/purchases.service.js";
 import { SALE_ID, USER_ID } from "../fixtures.js";
+import { ServiceUnavailableError } from "../../src/errors/errors.js";
 
 function serviceWithRepo(
   purchase: PurchasesRepository["purchase"],
@@ -53,8 +54,8 @@ describe("purchase", () => {
     expect(purchase).toHaveBeenCalledWith(SALE_ID, USER_ID);
   });
 
-  test("throws PurchaseFailedError if repository fails", async () => {
-    const cause = new Error("redis down");
+  test("throws PurchaseFailedError if Redis is unreachable", async () => {
+    const cause = new ClientClosedError();
     const mockPurchaseRepository = vi.fn().mockRejectedValue(cause);
 
     const result = serviceWithRepo(mockPurchaseRepository).purchase(
@@ -67,6 +68,17 @@ describe("purchase", () => {
       `purchase failed for sale: ${SALE_ID} and user: ${USER_ID}`,
     );
     await expect(result).rejects.toMatchObject({ cause });
+  });
+
+  test("a failure that is not an outage stays what it is, so a bug is not hidden as 'try again'", async () => {
+    const bug = new TypeError("cannot read properties of undefined");
+
+    await expect(
+      serviceWithRepo(vi.fn().mockRejectedValue(bug)).purchase(
+        SALE_ID,
+        USER_ID,
+      ),
+    ).rejects.toBe(bug);
   });
 });
 
@@ -96,8 +108,8 @@ describe("getPurchase", () => {
     expect(result).toBeNull();
   });
 
-  test("throws PurchaseLookupFailedError if repository fails", async () => {
-    const cause = new Error("redis down");
+  test("throws ServiceUnavailableError if Redis is unreachable", async () => {
+    const cause = new ClientClosedError();
     const getPurchasedAt = vi.fn().mockRejectedValue(cause);
 
     const result = serviceWithRepo(vi.fn(), getPurchasedAt).getPurchase(
@@ -105,10 +117,21 @@ describe("getPurchase", () => {
       USER_ID,
     );
 
-    await expect(result).rejects.toBeInstanceOf(PurchaseLookupFailedError);
+    await expect(result).rejects.toBeInstanceOf(ServiceUnavailableError);
     await expect(result).rejects.toThrow(
       `purchase lookup failed for sale: ${SALE_ID} and user: ${USER_ID}`,
     );
     await expect(result).rejects.toMatchObject({ cause });
+  });
+
+  test("a lookup failure that is not an outage stays what it is", async () => {
+    const bug = new TypeError("cannot read properties of undefined");
+
+    await expect(
+      serviceWithRepo(vi.fn(), vi.fn().mockRejectedValue(bug)).getPurchase(
+        SALE_ID,
+        USER_ID,
+      ),
+    ).rejects.toBe(bug);
   });
 });

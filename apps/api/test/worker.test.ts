@@ -325,6 +325,38 @@ describe("worker", () => {
       expect(exitSpy).not.toHaveBeenCalled();
     });
 
+    test("recreates the consumer group when Redis lost it, then carries on", async () => {
+      vi.useFakeTimers();
+      const lost = new Error("NOGROUP No such key or consumer group");
+      h.syncBatch.mockRejectedValueOnce(lost).mockImplementation(async () => {
+        process.emit("SIGTERM");
+        return 0;
+      });
+
+      await startWorker();
+      await flush();
+
+      expect(h.ensureConsumerGroup).toHaveBeenCalledTimes(2); // at startup, then again
+      expect(h.ensureConsumerGroup).toHaveBeenLastCalledWith(SALE_ID);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.syncBatch).toHaveBeenCalledTimes(2);
+    });
+
+    test("does not touch the consumer group after other failures", async () => {
+      vi.useFakeTimers();
+      h.syncBatch
+        .mockRejectedValueOnce(new Error("mongo down"))
+        .mockImplementation(async () => {
+          process.emit("SIGTERM");
+          return 0;
+        });
+
+      await startWorker();
+      await flush();
+
+      expect(h.ensureConsumerGroup).toHaveBeenCalledTimes(1); // only at startup
+    });
+
     test("does not wait after a batch that succeeds", async () => {
       vi.useFakeTimers();
       syncReturning([3, 2, 0]);

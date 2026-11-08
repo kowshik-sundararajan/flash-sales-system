@@ -6,6 +6,7 @@ import {
   type SalesService,
 } from "../../src/services/sales.service.js";
 import { makeSale, SALE_ID } from "../fixtures.js";
+import { ServiceUnavailableError } from "../../src/errors/errors.js";
 
 const MISSING_SALE_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -23,6 +24,7 @@ function appWith(getStatus: SalesService["getStatus"]) {
   return buildApp({
     salesService: { getStatus },
     purchasesService: { purchase: vi.fn(), getPurchase: vi.fn() },
+    checkDependencies: async () => {},
   });
 }
 
@@ -55,6 +57,18 @@ describe("GET /api/sales/:saleId", () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.json()).toEqual({ error: "sale_not_found" });
+  });
+
+  test("503 with Retry-After when Mongo cannot be reached", async () => {
+    const getStatus = vi
+      .fn()
+      .mockRejectedValue(new ServiceUnavailableError(SALE_ID));
+
+    const res = await appWith(getStatus).inject(`/api/sales/${SALE_ID}`);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBe("1");
+    expect(res.json()).toEqual({ error: "temporarily_unavailable" });
   });
 
   test("500 on an unexpected error, not 404", async () => {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { MongoNetworkError } from "mongodb";
 import { SaleStatus } from "../../src/models/sale.model.js";
 import type { SalesRepository } from "../../src/repositories/sales.repository.js";
 import {
@@ -7,6 +8,7 @@ import {
   SalesService,
 } from "../../src/services/sales.service.js";
 import { INITIAL_STOCK, makeSale, makeStock, SALE_ID } from "../fixtures.js";
+import { ServiceUnavailableError } from "../../src/errors/errors.js";
 
 function repoWith(findById: SalesRepository["findById"]): SalesRepository {
   return { findById, setRemainingStockFromPurchaseCount: vi.fn() };
@@ -126,13 +128,21 @@ describe("SalesService", () => {
       );
     });
 
-    test("propagates repository errors unchanged", async () => {
-      const error = new Error("db down");
-      const repo = repoWith(vi.fn().mockRejectedValue(error));
+    test("a Mongo outage becomes SaleLookupFailedError, keeping the cause", async () => {
+      const cause = new MongoNetworkError("db down");
+      const repo = repoWith(vi.fn().mockRejectedValue(cause));
 
-      await expect(new SalesService(repo).getStatus(SALE_ID)).rejects.toBe(
-        error,
-      );
+      const result = new SalesService(repo).getStatus(SALE_ID);
+
+      await expect(result).rejects.toBeInstanceOf(ServiceUnavailableError);
+      await expect(result).rejects.toMatchObject({ cause });
+    });
+
+    test("a failure that is not an outage stays what it is", async () => {
+      const bug = new TypeError("cannot read properties of undefined");
+      const repo = repoWith(vi.fn().mockRejectedValue(bug));
+
+      await expect(new SalesService(repo).getStatus(SALE_ID)).rejects.toBe(bug);
     });
   });
 });

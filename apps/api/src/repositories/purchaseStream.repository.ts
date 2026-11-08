@@ -4,7 +4,7 @@ import { saleKeys } from "./purchases.repository.js";
 
 export const PURCHASE_SYNC_GROUP = "purchase-sync";
 const BATCH_SIZE = 500;
-const DEFAULT_CLAIM_IDLE_MS = 10_000;
+const DEFAULT_CLAIM_IDLE_MS = 30_000;
 
 export interface StreamEntry {
   id: string;
@@ -21,17 +21,6 @@ export interface PurchaseStream {
   readBatch(saleId: SaleId, consumer: string): Promise<StreamEntry[]>;
   deadLetter(saleId: SaleId, rejected: RejectedEntry[]): Promise<void>;
   ack(saleId: SaleId, ids: string[]): Promise<void>;
-}
-
-async function execOrThrow(
-  transaction: Promise<unknown>,
-  message: string,
-): Promise<void> {
-  try {
-    await transaction;
-  } catch (cause) {
-    throw new Error(message, { cause });
-  }
 }
 
 type ReadReply =
@@ -90,18 +79,25 @@ export class RedisPurchaseStream implements PurchaseStream {
         fields: JSON.stringify(entry.fields),
       });
     }
-    await execOrThrow(query.exec(), "failed to dead-letter stream entries");
+
+    try {
+      await query.exec();
+    } catch (cause) {
+      throw new Error("failed to dead-letter stream entries", { cause });
+    }
   }
 
   async ack(saleId: SaleId, ids: string[]): Promise<void> {
     const key = saleKeys.stream(saleId);
-    await execOrThrow(
-      this.redis
+
+    try {
+      await this.redis
         .multi()
         .xAck(key, PURCHASE_SYNC_GROUP, ids)
         .xDel(key, ids)
-        .exec(),
-      "failed to ack purchase stream entries",
-    );
+        .exec();
+    } catch (cause) {
+      throw new Error("failed to ack purchase stream entries", { cause });
+    }
   }
 }
