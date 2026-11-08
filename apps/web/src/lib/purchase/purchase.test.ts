@@ -83,10 +83,12 @@ test("throws when the body is not valid JSON", async () => {
   );
 });
 
-test("propagates network failures", async () => {
+test("reports network failures as status 0", async () => {
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
 
-  await expect(postPurchase(SALE_ID, USER_ID)).rejects.toThrow("offline");
+  await expect(postPurchase(SALE_ID, USER_ID)).rejects.toThrow(
+    "purchase failed: 0",
+  );
 });
 
 const PURCHASED_AT = 1_700_000_000_000;

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useGetPurchase } from "../hooks/useGetPurchase";
+import { useCheckPurchase } from "../hooks/useCheckPurchase";
 import { usePurchase } from "../hooks/usePurchase";
 import {
   CHECK_NOT_FOUND_MESSAGE,
@@ -27,65 +27,67 @@ interface PurchasePanelProps {
 }
 
 export function PurchasePanel({ saleId, status }: PurchasePanelProps) {
-  const [input, setInput] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
   const [lastAction, setLastAction] = useState<Action>();
 
-  const username = input.trim();
-  const valid = isValidUsername(username);
-  const showError = username !== "" && !valid;
+  const username = usernameInput.trim();
+  const isUsernameValid = isValidUsername(username);
+  const showUsernameError = username !== "" && !isUsernameValid;
 
-  const buying = usePurchase(saleId, username);
-  const checking = useGetPurchase(saleId, username);
-  const busy = buying.pending || checking.pending;
+  const buyState = usePurchase(saleId, username);
+  const checkState = useCheckPurchase(saleId, username);
+  const isBusy = buyState.pending || checkState.pending;
 
-  function buy(event: FormEvent) {
+  function handleBuy(event: FormEvent) {
     event.preventDefault();
-    if (status !== "active" || !valid || busy) return;
+    if (status !== "active" || !isUsernameValid || isBusy) return;
     setLastAction("buy");
-    void buying.buy();
+    void buyState.buy();
   }
 
-  function check() {
-    if (!valid || busy) return;
+  function handleCheck() {
+    if (!isUsernameValid || isBusy) return;
     setLastAction("check");
-    void checking.check();
+    void checkState.check();
   }
 
   let message: Message | undefined;
   if (lastAction === "buy") {
-    if (buying.failed) {
-      message = buying.unconfirmed ? UNCONFIRMED_MESSAGE : FAILED_MESSAGE;
-    } else if (buying.code) message = PURCHASE_MESSAGES[buying.code];
+    if (buyState.failed) {
+      message = buyState.unconfirmed ? UNCONFIRMED_MESSAGE : FAILED_MESSAGE;
+    } else if (buyState.code) message = PURCHASE_MESSAGES[buyState.code];
   } else if (lastAction === "check") {
-    if (checking.failed) message = FAILED_MESSAGE;
-    else if (checking.purchase) message = CHECK_PURCHASED_MESSAGE;
-    else if (checking.purchase === null) message = CHECK_NOT_FOUND_MESSAGE;
+    if (checkState.failed) message = FAILED_MESSAGE;
+    else if (checkState.purchase) message = CHECK_PURCHASED_MESSAGE;
+    else if (checkState.purchase === null) message = CHECK_NOT_FOUND_MESSAGE;
   }
 
   return (
-    <form className="form" onSubmit={buy} noValidate>
+    <form className="form" onSubmit={handleBuy} noValidate>
       <div className="field">
         <label className="label" htmlFor="username">
           Username
         </label>
         <input
           id="username"
-          className={showError ? "input is-invalid" : "input"}
-          value={input}
+          className={showUsernameError ? "input is-invalid" : "input"}
+          value={usernameInput}
           maxLength={32}
           placeholder="e.g. johndoe30"
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => setUsernameInput(event.target.value)}
         />
-        <p className={showError ? "hint is-error" : "hint"}>{USERNAME_HINT}</p>
+        <p className={showUsernameError ? "hint is-error" : "hint"}>
+          {USERNAME_HINT}
+        </p>
       </div>
 
       <button
         type="submit"
         className="btn btn-primary"
-        disabled={status !== "active" || !valid || busy}
+        disabled={status !== "active" || !isUsernameValid || isBusy}
       >
-        {buying.pending && <span className="spinner" />}
-        {buying.pending ? "Buying…" : "Buy now"}
+        {buyState.pending && <span className="spinner" />}
+        {buyState.pending ? "Buying…" : "Buy now"}
       </button>
       {status !== "active" && (
         <p className="helper">{BLOCKED_REASONS[status]}</p>
@@ -94,10 +96,10 @@ export function PurchasePanel({ saleId, status }: PurchasePanelProps) {
       <button
         type="button"
         className="btn btn-secondary"
-        disabled={!valid || busy}
-        onClick={check}
+        disabled={!isUsernameValid || isBusy}
+        onClick={handleCheck}
       >
-        {checking.pending ? "Checking…" : "Check purchase"}
+        {checkState.pending ? "Checking…" : "Check purchase"}
       </button>
 
       <div className="feedback" role="status">

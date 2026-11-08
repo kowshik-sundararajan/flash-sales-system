@@ -1,27 +1,38 @@
 import { useRef, useState } from "react";
-import { getPurchase, postPurchase } from "../lib/purchase/purchase";
+import {
+  getPurchase,
+  postPurchase,
+  PurchaseRequestError,
+} from "../lib/purchase/purchase";
 import { PURCHASE_CODE, type PurchaseCode } from "../types/purchase";
 
 // unconfirmed: the buy failed and we could not find out whether it went through
-type Outcome = { userId: string } & (
+type BuyOutcome = { userId: string } & (
   { failed: false; code: PurchaseCode } | { failed: true; unconfirmed: boolean }
 );
 
 export function usePurchase(saleId: string, userId: string) {
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome>();
-  const inFlight = useRef(false); // guards against double clicks
+  const [outcome, setOutcome] = useState<BuyOutcome>();
+  const isRequestInFlight = useRef(false); // guards against double clicks
 
-  // The request failed, but it may still have gone through: a slow Redis can
-  // finish a purchase after the API stopped waiting. Ask before saying it failed.
-  async function whatHappened(): Promise<Outcome> {
+  // A network error or 5xx may still have gone through: a slow Redis can finish
+  // a purchase after the API stopped waiting. Ask before saying it failed.
+  // Refusals (429, 4xx) cannot have gone through, so there is nothing to ask.
+  async function resolveFailedBuy(buyError: unknown): Promise<BuyOutcome> {
+    const outcomeIsUnknown =
+      !(buyError instanceof PurchaseRequestError) || buyError.outcomeIsUnknown;
+    if (!outcomeIsUnknown) {
+      return { userId, failed: true, unconfirmed: false };
+    }
+
     try {
-      const purchase = await getPurchase(saleId, userId);
-      if (purchase) {
+      const existingPurchase = await getPurchase(saleId, userId);
+      if (existingPurchase) {
         return {
           userId,
           failed: false,
-          code: PURCHASE_CODE.ALREADY_PURCHASED,
+          code: PURCHASE_CODE.PURCHASED,
         };
       }
       return { userId, failed: true, unconfirmed: false };
@@ -32,29 +43,32 @@ export function usePurchase(saleId: string, userId: string) {
   }
 
   async function buy() {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (isRequestInFlight.current) return;
+    isRequestInFlight.current = true;
     setPending(true);
     setOutcome(undefined);
 
     try {
-      const response = await postPurchase(saleId, userId);
-      setOutcome({ userId, failed: false, code: response.code });
-    } catch {
-      setOutcome(await whatHappened());
+      const purchaseResponse = await postPurchase(saleId, userId);
+      setOutcome({ userId, failed: false, code: purchaseResponse.code });
+    } catch (buyError) {
+      setOutcome(await resolveFailedBuy(buyError));
     } finally {
-      inFlight.current = false;
+      isRequestInFlight.current = false;
       setPending(false);
     }
   }
 
-  const current = outcome?.userId === userId ? outcome : undefined;
+  const outcomeForUser = outcome?.userId === userId ? outcome : undefined;
 
   return {
     buy,
     pending,
-    code: current && !current.failed ? current.code : undefined,
-    failed: current?.failed ?? false,
-    unconfirmed: current?.failed ? current.unconfirmed : false,
+    code:
+      outcomeForUser && !outcomeForUser.failed
+        ? outcomeForUser.code
+        : undefined,
+    failed: outcomeForUser?.failed ?? false,
+    unconfirmed: outcomeForUser?.failed ? outcomeForUser.unconfirmed : false,
   };
 }

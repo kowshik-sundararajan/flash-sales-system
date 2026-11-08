@@ -68,10 +68,11 @@ export class PurchaseSyncService {
 
     if (purchases.length > 0) {
       await this.purchasesRepository.insertMany(purchases);
-      const stored = await this.purchasesRepository.countBySaleId(saleId);
+      const storedPurchaseCount =
+        await this.purchasesRepository.countBySaleId(saleId);
       await this.salesRepository.setRemainingStockFromPurchaseCount(
         saleId,
-        stored,
+        storedPurchaseCount,
       );
     }
 

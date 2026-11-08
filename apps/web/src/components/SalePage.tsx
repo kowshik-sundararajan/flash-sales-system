@@ -3,7 +3,7 @@ import { SaleCard } from "./SaleCard";
 
 const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
 
-function Message({ title, body }: { title: string; body: string }) {
+function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <section className="card empty">
       <p className="empty-title">{title}</p>
@@ -18,7 +18,7 @@ function SaleContent({ saleId }: { saleId: string }) {
   if (sale) return <SaleCard sale={sale} />;
   if (sale === null) {
     return (
-      <Message
+      <EmptyState
         title="No sale found"
         body="This sale doesn't exist or has been removed."
       />
@@ -26,7 +26,10 @@ function SaleContent({ saleId }: { saleId: string }) {
   }
   if (failed) {
     return (
-      <Message title="Can't load the sale" body="Trying again automatically." />
+      <EmptyState
+        title="Can't load the sale"
+        body="Trying again automatically."
+      />
     );
   }
   return <p className="note">Loading sale…</p>;

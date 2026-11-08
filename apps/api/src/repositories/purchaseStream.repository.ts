@@ -46,14 +46,14 @@ export class RedisPurchaseStream implements PurchaseStream {
         { MKSTREAM: true },
       );
     } catch (error) {
-      const alreadyExists =
+      const groupAlreadyExists =
         error instanceof Error && error.message.includes("BUSYGROUP");
-      if (!alreadyExists) throw error;
+      if (!groupAlreadyExists) throw error;
     }
   }
 
   async readBatch(saleId: SaleId, consumer: string): Promise<StreamEntry[]> {
-    const reply = (await this.redis.xReadGroup(
+    const readReply = (await this.redis.xReadGroup(
       PURCHASE_SYNC_GROUP,
       consumer,
       { key: saleKeys.stream(saleId), id: ">" },
@@ -64,16 +64,16 @@ export class RedisPurchaseStream implements PurchaseStream {
       },
     )) as ReadReply;
 
-    const messages = reply?.[0]?.messages ?? [];
+    const messages = readReply?.[0]?.messages ?? [];
     return messages.map(({ id, message }) => ({ id, fields: message }));
   }
 
   async deadLetter(saleId: SaleId, rejected: RejectedEntry[]): Promise<void> {
     if (rejected.length === 0) return;
 
-    const query = this.redis.multi();
+    const transaction = this.redis.multi();
     for (const { entry, reason } of rejected) {
-      query.xAdd(saleKeys.deadLetter(saleId), "*", {
+      transaction.xAdd(saleKeys.deadLetter(saleId), "*", {
         entryId: entry.id,
         reason,
         fields: JSON.stringify(entry.fields),
@@ -81,7 +81,7 @@ export class RedisPurchaseStream implements PurchaseStream {
     }
 
     try {
-      await query.exec();
+      await transaction.exec();
     } catch (cause) {
       throw new Error("failed to dead-letter stream entries", { cause });
     }

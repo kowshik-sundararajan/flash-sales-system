@@ -2,7 +2,8 @@ import type { SaleStatusResponse } from "../types/sale";
 
 export function StockBar({ stock }: { stock: SaleStatusResponse["stock"] }) {
   const { initial, remaining } = stock;
-  const ratio = initial > 0 ? Math.min(1, Math.max(0, remaining / initial)) : 0;
+  const fractionLeft =
+    initial > 0 ? Math.min(1, Math.max(0, remaining / initial)) : 0;
 
   return (
     <div className="stock">
@@ -13,7 +14,7 @@ export function StockBar({ stock }: { stock: SaleStatusResponse["stock"] }) {
         <span className="stock-total">of {initial}</span>
       </div>
       <div className="bar">
-        <div className="bar-fill" style={{ width: `${ratio * 100}%` }} />
+        <div className="bar-fill" style={{ width: `${fractionLeft * 100}%` }} />
       </div>
     </div>
   );

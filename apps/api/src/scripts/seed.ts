@@ -20,22 +20,22 @@ async function seedRedisSale(
   redis: RedisClient,
   sale: Pick<Sale, "id" | "startsAt" | "endsAt" | "stock">,
 ): Promise<void> {
-  const stale: string[] = [];
-  for await (const keys of redis.scanIterator({
+  const staleKeys: string[] = [];
+  for await (const keysBatch of redis.scanIterator({
     MATCH: saleKeys.all(sale.id),
     COUNT: 100,
   })) {
-    stale.push(...keys);
+    staleKeys.push(...keysBatch);
   }
 
-  const query = redis.multi();
-  if (stale.length > 0) query.del(stale);
-  query.hSet(saleKeys.sale(sale.id), {
+  const transaction = redis.multi();
+  if (staleKeys.length > 0) transaction.del(staleKeys);
+  transaction.hSet(saleKeys.sale(sale.id), {
     startsAt: sale.startsAt,
     endsAt: sale.endsAt,
     stock: sale.stock.remaining,
   });
-  await query.exec();
+  await transaction.exec();
 
   await new RedisPurchaseStream(redis).ensureConsumerGroup(sale.id);
 }

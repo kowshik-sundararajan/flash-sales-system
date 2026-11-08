@@ -3,10 +3,10 @@ import type { SaleStatusResponse } from "../../types/sale";
 export async function fetchSaleStatus(
   saleId: string,
 ): Promise<SaleStatusResponse | null> {
-  const res = await fetch(`/api/sales/${encodeURIComponent(saleId)}`);
+  const response = await fetch(`/api/sales/${encodeURIComponent(saleId)}`);
 
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`sale status failed: ${res.status}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`sale status failed: ${response.status}`);
 
-  return (await res.json()) as SaleStatusResponse;
+  return (await response.json()) as SaleStatusResponse;
 }

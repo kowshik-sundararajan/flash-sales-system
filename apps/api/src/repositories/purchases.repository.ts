@@ -10,28 +10,28 @@ import type { SaleId } from "../schemas/sale.schema.js";
 import type { UserId } from "../schemas/userId.schema.js";
 import { type Collection, type Db, MongoBulkWriteError } from "mongodb";
 
-const EXPIRED = "EXPIRED";
+const REQUEST_EXPIRED = "EXPIRED";
 
 const PURCHASE_SCRIPT = `
 local saleKey, userKey, streamKey = KEYS[1], KEYS[2], KEYS[3]
 local saleId, userId, deadline = ARGV[1], ARGV[2], tonumber(ARGV[3])
 
 -- 1. Is the sale configured?
-local sale = redis.call('HMGET', saleKey, 'startsAt', 'endsAt', 'stock')
-if not sale[1] or not sale[2] or not sale[3] then
+local saleFields = redis.call('HMGET', saleKey, 'startsAt', 'endsAt', 'stock')
+if not saleFields[1] or not saleFields[2] or not saleFields[3] then
   return '${PURCHASE_CODE.NOT_CONFIGURED}'
 end
 
 -- 2. Has the API already given up on this request? If Redis was stalled, the
 -- request may only be running now. The API told the user "unavailable", so
 -- committing the purchase would contradict that.
-local time = redis.call('TIME')
-local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-if now > deadline then return '${EXPIRED}' end
+local redisTime = redis.call('TIME')
+local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
+if now > deadline then return '${REQUEST_EXPIRED}' end
 
 -- 3. Is the purchase within the sale window?
-if now < tonumber(sale[1]) then return '${PURCHASE_CODE.NOT_STARTED}' end
-if now >= tonumber(sale[2]) then return '${PURCHASE_CODE.ENDED}' end
+if now < tonumber(saleFields[1]) then return '${PURCHASE_CODE.NOT_STARTED}' end
+if now >= tonumber(saleFields[2]) then return '${PURCHASE_CODE.ENDED}' end
 
 -- 4. Has the user already purchased the item?
 if redis.call('EXISTS', userKey) == 1 then
@@ -39,7 +39,7 @@ if redis.call('EXISTS', userKey) == 1 then
 end
 
 -- 5. Is there enough stock?
-if tonumber(sale[3]) <= 0 then return '${PURCHASE_CODE.SOLD_OUT}' end
+if tonumber(saleFields[3]) <= 0 then return '${PURCHASE_CODE.SOLD_OUT}' end
 
 -- 6. Commit the purchase
 redis.call('HINCRBY', saleKey, 'stock', -1)
@@ -91,7 +91,7 @@ export class RedisPurchasesRepository implements PurchasesRepository {
       this.commandTimeoutMs,
     );
 
-    if (code === EXPIRED) {
+    if (code === REQUEST_EXPIRED) {
       throw new CommandTimeoutError(
         "purchase expired before Redis executed it",
       );
@@ -110,7 +110,7 @@ export class RedisPurchasesRepository implements PurchasesRepository {
 }
 
 export const PURCHASES_COLLECTION_NAME = "purchases";
-const DUPLICATE_KEY = 11000;
+const DUPLICATE_KEY_ERROR_CODE = 11000;
 
 export interface PurchasesStore {
   insertMany(purchases: Purchase[]): Promise<number>;
@@ -135,7 +135,10 @@ export class MongoPurchasesRepository implements PurchasesStore {
 
       return result.insertedCount;
     } catch (error) {
-      if (error instanceof MongoBulkWriteError && onlyDuplicates(error)) {
+      if (
+        error instanceof MongoBulkWriteError &&
+        isOnlyDuplicateKeyErrors(error)
+      ) {
         return error.insertedCount;
       }
       throw error;
@@ -147,10 +150,13 @@ export class MongoPurchasesRepository implements PurchasesStore {
   }
 }
 
-function onlyDuplicates(err: MongoBulkWriteError): boolean {
-  const writeErrors = [err.writeErrors].flat();
+function isOnlyDuplicateKeyErrors(error: MongoBulkWriteError): boolean {
+  const writeErrors = [error.writeErrors].flat();
   return (
-    writeErrors.length > 0 && writeErrors.every((e) => e.code === DUPLICATE_KEY)
+    writeErrors.length > 0 &&
+    writeErrors.every(
+      (writeError) => writeError.code === DUPLICATE_KEY_ERROR_CODE,
+    )
   );
 }
 

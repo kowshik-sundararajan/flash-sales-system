@@ -22,8 +22,8 @@ export const salesRoutes: FastifyPluginAsync<SalesRoutesOptions> = async (
 
     try {
       const now = Date.now();
-      const status = await salesService.getStatus(params.data.saleId, now);
-      return { ...status, serverTime: now };
+      const saleStatus = await salesService.getStatus(params.data.saleId, now);
+      return { ...saleStatus, serverTime: now };
     } catch (err) {
       if (err instanceof SaleNotFoundError) {
         return reply.code(404).send({ error: "sale_not_found" });

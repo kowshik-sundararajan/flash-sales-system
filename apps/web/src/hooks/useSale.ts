@@ -9,24 +9,24 @@ export function useSale(saleId: string) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    let isSubscribed = true;
 
     async function poll() {
       try {
-        const next = await fetchSaleStatus(saleId);
-        if (!active) return;
-        setSale(next);
+        const latestSale = await fetchSaleStatus(saleId);
+        if (!isSubscribed) return;
+        setSale(latestSale);
         setFailed(false);
       } catch {
-        if (active) setFailed(true);
+        if (isSubscribed) setFailed(true);
       }
     }
 
     void poll();
-    const id = setInterval(poll, POLL_MS);
+    const intervalId = setInterval(poll, POLL_MS);
     return () => {
-      active = false;
-      clearInterval(id);
+      isSubscribed = false;
+      clearInterval(intervalId);
     };
   }, [saleId]);
 

@@ -42,8 +42,8 @@ export const purchasesRoutes: FastifyPluginAsync<
       body.data.userId,
     );
 
-    const status = HTTP_STATUS_BY_PURCHASE_CODE[code];
-    return reply.code(status).send({ code });
+    const httpStatus = HTTP_STATUS_BY_PURCHASE_CODE[code];
+    return reply.code(httpStatus).send({ code });
   });
 
   app.get("/api/sales/:saleId/purchases/:userId", async (request, reply) => {

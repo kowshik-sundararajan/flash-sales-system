@@ -21,11 +21,12 @@ export class CommandTimeoutError extends Error {
   override name = "CommandTimeoutError";
 }
 
-const TRANSIENT_REPLY =
+const TRANSIENT_REDIS_REPLY =
   /^(LOADING|BUSY|TRYAGAIN|MASTERDOWN|READONLY|CLUSTERDOWN|NOREPLICAS)\b/;
 
 export function isDependencyOutage(error: unknown): boolean {
-  if (error instanceof ErrorReply) return TRANSIENT_REPLY.test(error.message);
+  if (error instanceof ErrorReply)
+    return TRANSIENT_REDIS_REPLY.test(error.message);
 
   return (
     error instanceof CommandTimeoutError ||

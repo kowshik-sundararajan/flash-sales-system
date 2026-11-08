@@ -3,12 +3,12 @@ export function formatDuration(ms: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 // Hours only when there are some, so a one hour sale reads 59:43, not 00:59:43.
 export function formatCountdown(ms: number): string {
-  const full = formatDuration(ms);
-  return full.startsWith("00:") ? full.slice(3) : full;
+  const withHours = formatDuration(ms);
+  return withHours.startsWith("00:") ? withHours.slice(3) : withHours;
 }

@@ -16,11 +16,11 @@ export function errorHandler(
       .send({ error: "temporarily_unavailable" });
   }
 
-  const status = err.statusCode;
+  const statusCode = err.statusCode;
 
-  if (status !== undefined && status >= 400 && status < 500) {
+  if (statusCode !== undefined && statusCode >= 400 && statusCode < 500) {
     request.log.info({ err }, "client error");
-    return reply.code(status).send({
+    return reply.code(statusCode).send({
       error: err.code ?? "bad_request",
       message: err.message,
     });

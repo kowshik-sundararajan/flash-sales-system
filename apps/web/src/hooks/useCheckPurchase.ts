@@ -2,18 +2,18 @@ import { useRef, useState } from "react";
 import { getPurchase } from "../lib/purchase/purchase";
 import type { Purchase } from "../types/purchase";
 
-type Outcome = { userId: string } & (
+type CheckOutcome = { userId: string } & (
   { failed: false; purchase: Purchase | null } | { failed: true }
 );
 
-export function useGetPurchase(saleId: string, userId: string) {
+export function useCheckPurchase(saleId: string, userId: string) {
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome>();
-  const inFlight = useRef(false); // guards against double submits
+  const [outcome, setOutcome] = useState<CheckOutcome>();
+  const isRequestInFlight = useRef(false); // guards against double submits
 
   async function check() {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (isRequestInFlight.current) return;
+    isRequestInFlight.current = true;
     setPending(true);
     setOutcome(undefined);
 
@@ -23,18 +23,21 @@ export function useGetPurchase(saleId: string, userId: string) {
     } catch {
       setOutcome({ userId, failed: true });
     } finally {
-      inFlight.current = false;
+      isRequestInFlight.current = false;
       setPending(false);
     }
   }
 
   // only show checked user
-  const current = outcome?.userId === userId ? outcome : undefined;
+  const outcomeForUser = outcome?.userId === userId ? outcome : undefined;
 
   return {
     check,
     pending,
-    purchase: current && !current.failed ? current.purchase : undefined,
-    failed: current?.failed ?? false,
+    purchase:
+      outcomeForUser && !outcomeForUser.failed
+        ? outcomeForUser.purchase
+        : undefined,
+    failed: outcomeForUser?.failed ?? false,
   };
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { useGetPurchase } from "./useGetPurchase";
+import { useCheckPurchase } from "./useCheckPurchase";
 import { getPurchase } from "../lib/purchase/purchase";
 import type { Purchase } from "../types/purchase";
 
@@ -27,7 +27,7 @@ function deferred<T>() {
 }
 
 function setup(userId = USER_ID) {
-  return renderHook(({ id }) => useGetPurchase(SALE_ID, id), {
+  return renderHook(({ id }) => useCheckPurchase(SALE_ID, id), {
     initialProps: { id: userId },
   });
 }

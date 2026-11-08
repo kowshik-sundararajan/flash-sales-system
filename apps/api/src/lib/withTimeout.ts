@@ -4,9 +4,9 @@ export async function withTimeout<T>(
   command: Promise<T>,
   ms: number,
 ): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
+  let timeoutId: NodeJS.Timeout | undefined;
+  const timeoutRejection = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
       reject,
       ms,
       new CommandTimeoutError(`command timed out after ${ms}ms`),
@@ -14,8 +14,8 @@ export async function withTimeout<T>(
   });
 
   try {
-    return await Promise.race([command, timeout]);
+    return await Promise.race([command, timeoutRejection]);
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timeoutId);
   }
 }
