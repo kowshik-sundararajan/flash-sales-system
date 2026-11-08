@@ -3,7 +3,6 @@
 #
 # Then open `http://localhost:8080`
 #
-# Every `up` re-runs the seed, which resets the demo sale: full stock, no purchases, a fresh window.
 
 name: flash-sale
 
@@ -43,10 +42,17 @@ services:
       timeout: 3s
       retries: 20
 
-  # Runs once and exits: creates the sale in Mongo and Redis.
+  # Runs once and exits: creates the sale in Mongo and Redis if needed.
   seed:
     <<: *api
     command: ["node", "apps/api/dist/scripts/seed.js"]
+    environment:
+      <<: *api-env
+      SALE_STARTS_AT: ${SALE_STARTS_AT:-}
+      SALE_ENDS_AT: ${SALE_ENDS_AT:-}
+      SALE_STARTS_IN_SECONDS: ${SALE_STARTS_IN_SECONDS:-15}
+      SALE_DURATION_SECONDS: ${SALE_DURATION_SECONDS:-3600}
+      SALE_STOCK: ${SALE_STOCK:-100}
     restart: "no"
     depends_on:
       mongo:
@@ -103,12 +109,16 @@ services:
   k6:
     image: grafana/k6:2.3.0
     profiles: ["stress"]
-    command: run --quiet /scripts/purchase.ts
+    command: run --quiet --summary-export /results/summary.json /scripts/purchase.ts
     environment:
+      K6_WEB_DASHBOARD: "true"
+      K6_WEB_DASHBOARD_EXPORT: /results/report.html
       BASE_URL: http://web
       SALE_ID: 8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f
+      STOCK: ${SALE_STOCK:-100}
     volumes:
       - ./apps/api/test/stress:/scripts:ro
+      - ./stress-results:/results
     depends_on:
       web:
         condition: service_healthy

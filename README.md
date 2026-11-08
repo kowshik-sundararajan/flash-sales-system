@@ -204,6 +204,32 @@ Four scenarios:
 
 nginx rate-limits each client address to 100 requests per second.
 
+#### Results
+
+16,015 requests at about 537 per second, with up to 800 virtual users at once and no failed requests.
+
+| Scenario | Outcome              | Count | Expected | Result |
+| -------- | -------------------- | ----: | -------: | :----: |
+| Hammer   | `PURCHASED`          |     1 |        1 |   ✅   |
+| Hammer   | `ALREADY_PURCHASED`  |   499 |      499 |   ✅   |
+| Surge    | `PURCHASED`          |    99 |       99 |   ✅   |
+| Surge    | `SOLD_OUT`           | 9,901 |    9,901 |   ✅   |
+| Flood    | 429 rate limited     |   791 |      > 0 |   ✅   |
+| All      | Unexpected responses |     0 |        0 |   ✅   |
+
+Response time at the 95th percentile (p95) against its threshold, in milliseconds:
+
+```mermaid
+xychart-beta
+    title "p95 response time (ms)"
+    x-axis ["Surge", "Watchers"]
+    y-axis "ms" 0 --> 1000
+    bar [104, 114]
+    line [1000, 500]
+```
+
+The bars are the measured p95 (surge 104 ms, watchers 114 ms). The line is the threshold (1,000 ms and 500 ms). Overall: median 23 ms, p95 104 ms, p99 143 ms, max 204 ms.
+
 ## 5. Decisions and trade-offs
 
 | Decision                                          | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Cost                                                                                                                               |
