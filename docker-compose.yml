@@ -99,6 +99,20 @@ services:
       api:
         condition: service_healthy
 
+  # Stress test, opt-in: `npm run stress`
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ["stress"]
+    command: run --quiet /scripts/purchase.ts
+    environment:
+      BASE_URL: http://web
+      SALE_ID: 8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f
+    volumes:
+      - ./apps/api/test/stress:/scripts:ro
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   mongo-data:
   redis-data:

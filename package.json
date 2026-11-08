@@ -12,13 +12,16 @@
     "dev:api": "npm run dev -w apps/api",
     "dev:web": "npm run dev -w apps/web",
     "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run typecheck --workspaces && tsc -p apps/api/test/stress",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "test": "npm run test --workspaces",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "stress": "docker compose run --rm seed && docker compose --profile stress run --rm k6",
+    "start": "docker compose up --build"
   },
   "devDependencies": {
+    "@types/k6": "^2.3.1",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.10",
