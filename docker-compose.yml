@@ -1,15 +1,104 @@
+# Run the flash sales system with one command:
+#   `docker compose up --build`
+#
+# Then open `http://localhost:8080`
+#
+# Every `up` re-runs the seed, which resets the demo sale: full stock, no purchases, a fresh window.
+
+name: flash-sale
+
+x-api: &api
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: &api-env
+    DB_URL: mongodb://mongo:27017/ecommerce
+    REDIS_URL: redis://redis:6379
+    SALE_ID: 8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f
+    HOST: 0.0.0.0
+    PORT: "3000"
+  restart: unless-stopped
+
 services:
   mongo:
-    image: mongo:latest
-    ports:
-      - "27017:27017"
+    image: mongo:9.0.4
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   redis:
-    image: redis:latest
+    image: redis:8.10.3
     command: redis-server --appendonly yes --appendfsync everysec
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Runs once and exits: creates the sale in Mongo and Redis.
+  seed:
+    <<: *api
+    command: ["node", "apps/api/dist/scripts/seed.js"]
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    <<: *api
+    command: ["node", "apps/api/dist/server.js"]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    stop_grace_period: 10s
+    deploy:
+      replicas: 3
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *api
+    stop_grace_period: 10s
+    deploy:
+      replicas: 2
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     ports:
-      - "6379:6379"
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
+  mongo-data:
   redis-data:

@@ -42,7 +42,7 @@ async function seedRedisSale(
 
 async function main() {
   const config = loadConfig(process.env);
-  const startsInSeconds = 60;
+  const startsInSeconds = 15;
   const durationSeconds = 3600;
 
   const startsAt = Date.now() + startsInSeconds * 1000;

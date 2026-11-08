@@ -52,7 +52,7 @@ async function main() {
     app.log.info("connected to MongoDB");
     await redis.connect();
     app.log.info("connected to Redis");
-    await app.listen({ port: config.port });
+    await app.listen({ host: config.host, port: config.port });
   } catch (err) {
     app.log.fatal({ err }, "failed to start");
     await mongo.close().catch(() => {});

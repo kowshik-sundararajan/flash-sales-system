@@ -4,12 +4,21 @@ import { loadConfig } from "../src/config.js";
 const base = { DB_URL: "mongodb://db/x", REDIS_URL: "redis://r" };
 
 describe("loadConfig", () => {
-  test("returns config with default port 3000", () => {
+  test("returns config with default host localhost and port 3000", () => {
     expect(loadConfig(base)).toEqual({
+      host: "localhost",
       port: 3000,
       dbUrl: "mongodb://db/x",
       redisUrl: "redis://r",
     });
+  });
+
+  test("parses HOST from env", () => {
+    expect(loadConfig({ ...base, HOST: "0.0.0.0" }).host).toBe("0.0.0.0");
+  });
+
+  test.each(["", "   "])("falls back to localhost on blank HOST %j", (host) => {
+    expect(loadConfig({ ...base, HOST: host }).host).toBe("localhost");
   });
 
   test("parses PORT from env", () => {
