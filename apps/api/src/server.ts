@@ -5,6 +5,9 @@ import { MongoSalesRepository } from "./repositories/sales.repository.js";
 import { SalesService } from "./services/sales.service.js";
 import { PurchasesService } from "./services/purchases.service.js";
 import { RedisPurchasesRepository } from "./repositories/purchases.repository.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("api", process.env.LOG_LEVEL);
 
 async function main() {
   const config = loadConfig(process.env);
@@ -12,21 +15,26 @@ async function main() {
   const mongo = createMongoClient(config.dbUrl);
   const db = mongo.db();
 
-  const redis = createRedisClient(config.redisUrl);
+  const redis = createRedisClient(config.redisUrl, (err) =>
+    logger.error({ err }, "redis error"),
+  );
 
   const salesService = new SalesService(new MongoSalesRepository(db));
   const purchasesService = new PurchasesService(
     new RedisPurchasesRepository(redis),
   );
 
-  const app = buildApp({ salesService, purchasesService }, { logger: true });
+  const app = buildApp(
+    { salesService, purchasesService },
+    { loggerInstance: logger },
+  );
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down");
     await app.close();
     const results = await Promise.allSettled([
       mongo.close(),
-      redis.quit().catch(() => redis.disconnect()),
+      redis.close().catch(() => redis.destroy()),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
@@ -48,12 +56,12 @@ async function main() {
   } catch (err) {
     app.log.fatal({ err }, "failed to start");
     await mongo.close().catch(() => {});
-    await redis.quit().catch(() => redis.disconnect());
+    await redis.close().catch(() => redis.destroy());
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  console.error(err);
+  logger.fatal({ err }, "api crashed");
   process.exit(1);
 });

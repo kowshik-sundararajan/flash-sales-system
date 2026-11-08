@@ -1,4 +1,3 @@
-import type { Redis } from "ioredis";
 import {
   MongoBulkWriteError,
   type BulkWriteResult,
@@ -13,14 +12,15 @@ import {
   ensurePurchaseIndexes,
   MongoPurchasesRepository,
   RedisPurchasesRepository,
-} from "../../src/repositories/purchase.repository.js";
+} from "../../src/repositories/purchases.repository.js";
+import type { RedisClient } from "../../src/bootstrap.js";
 import { OTHER_USER_ID, SALE_ID, USER_ID } from "../fixtures.js";
 import { fakeDb } from "../helper.js";
 
 const DUPLICATE_KEY = 11000;
 
 function fakeRedis(evalImpl: ReturnType<typeof vi.fn>) {
-  return { eval: evalImpl } as unknown as Redis;
+  return { eval: evalImpl } as unknown as RedisClient;
 }
 
 describe("RedisPurchasesRepository", () => {
@@ -33,15 +33,14 @@ describe("RedisPurchasesRepository", () => {
     );
 
     expect(evalFn).toHaveBeenCalledOnce();
-    expect(evalFn).toHaveBeenCalledWith(
-      expect.stringContaining("redis.call"),
-      3,
-      `{sale:${SALE_ID}}:sale`,
-      `{sale:${SALE_ID}}:user:${USER_ID}`,
-      `{sale:${SALE_ID}}:purchases`,
-      SALE_ID,
-      USER_ID,
-    );
+    expect(evalFn).toHaveBeenCalledWith(expect.stringContaining("redis.call"), {
+      keys: [
+        `{sale:${SALE_ID}}:sale`,
+        `{sale:${SALE_ID}}:user:${USER_ID}`,
+        `{sale:${SALE_ID}}:purchases`,
+      ],
+      arguments: [SALE_ID, USER_ID],
+    });
   });
 
   test("keys share the {sale:<id>} hash tag so they land in one cluster slot", async () => {
@@ -52,7 +51,8 @@ describe("RedisPurchasesRepository", () => {
       USER_ID,
     );
 
-    const [, , saleKey, userKey, streamKey] = evalFn.mock.calls[0] as string[];
+    const [saleKey, userKey, streamKey] = evalFn.mock.calls[0]![1]
+      .keys as string[];
     const tag = (key: string) => /\{[^}]+\}/.exec(key)?.[0];
     expect(tag(saleKey!)).toBe(`{sale:${SALE_ID}}`);
     expect(tag(userKey!)).toBe(tag(saleKey!));
@@ -86,9 +86,43 @@ describe("RedisPurchasesRepository", () => {
   });
 });
 
+describe("RedisPurchasesRepository command timeout", () => {
+  const hangs = () => new Promise<never>(() => {});
+
+  test("a purchase fails fast when Redis does not answer in time", async () => {
+    const repo = new RedisPurchasesRepository(fakeRedis(vi.fn(hangs)), 20);
+
+    await expect(repo.purchase(SALE_ID, USER_ID)).rejects.toThrow(
+      "timed out after 20ms",
+    );
+  });
+
+  test("so does reading a purchase time", async () => {
+    const repo = new RedisPurchasesRepository(
+      { get: vi.fn(hangs) } as unknown as RedisClient,
+      20,
+    );
+
+    await expect(repo.getPurchasedAt(SALE_ID, USER_ID)).rejects.toThrow(
+      "timed out after 20ms",
+    );
+  });
+
+  test("an answer in time is returned as is", async () => {
+    const repo = new RedisPurchasesRepository(
+      fakeRedis(vi.fn().mockResolvedValue(PURCHASE_CODE.PURCHASED)),
+      1_000,
+    );
+
+    await expect(repo.purchase(SALE_ID, USER_ID)).resolves.toBe(
+      PURCHASE_CODE.PURCHASED,
+    );
+  });
+});
+
 describe("RedisPurchasesRepository.getPurchasedAt", () => {
   function fakeRedisGet(get: ReturnType<typeof vi.fn>) {
-    return { get } as unknown as Redis;
+    return { get } as unknown as RedisClient;
   }
 
   test("reads the user key under the sale's hash tag", async () => {
@@ -255,7 +289,7 @@ describe("MongoPurchasesRepository", () => {
   });
 });
 
-describe("MongoPurchasesRepository.countBySale", () => {
+describe("MongoPurchasesRepository.countBySaleId", () => {
   test("counts the purchases of the sale", async () => {
     const countDocuments = vi.fn().mockResolvedValue(42);
     const { db } = fakeDb({ countDocuments });

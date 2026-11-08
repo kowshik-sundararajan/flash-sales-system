@@ -1,12 +1,17 @@
 import type { Collection, Db } from "mongodb";
 import type { Sale } from "../models/sale.model.js";
+import type { SaleId } from "../schemas/sale.schema.js";
 
 export const SALES_COLLECTION_NAME = "sales";
 
 export type SaleDocument = Omit<Sale, "id"> & { _id: string };
 
 export interface SalesRepository {
-  findById(id: string): Promise<Sale | null>;
+  findById(id: SaleId): Promise<Sale | null>;
+  setRemainingStockFromPurchaseCount(
+    id: SaleId,
+    purchaseCount: number,
+  ): Promise<void>;
 }
 
 function toSale({ _id, product, stock, startsAt, endsAt }: SaleDocument): Sale {
@@ -29,5 +34,23 @@ export class MongoSalesRepository implements SalesRepository {
   async findById(id: string): Promise<Sale | null> {
     const doc = await this.sales.findOne({ _id: id });
     return doc ? toSale(doc) : null;
+  }
+
+  async setRemainingStockFromPurchaseCount(
+    id: SaleId,
+    purchaseCount: number,
+  ): Promise<void> {
+    await this.sales.updateOne({ _id: id }, [
+      {
+        $set: {
+          "stock.remaining": {
+            $min: [
+              "$stock.remaining",
+              { $max: [0, { $subtract: ["$stock.initial", purchaseCount] }] },
+            ],
+          },
+        },
+      },
+    ]);
   }
 }

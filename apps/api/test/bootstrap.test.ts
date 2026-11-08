@@ -12,12 +12,12 @@ test("fails fast (within 2000ms) when MongoDB is unreachable", async () => {
 });
 
 test("fails fast (within 2000ms) when Redis is unreachable", async () => {
-  const client = createRedisClient("redis://127.0.0.1:1", 200);
+  const client = createRedisClient("redis://127.0.0.1:1", () => {}, 200);
   const startedAt = Date.now();
 
   await expect(client.connect()).rejects.toThrow();
   await expect(client.get("x")).rejects.toThrow();
 
   expect(Date.now() - startedAt).toBeLessThan(2000);
-  client.disconnect();
+  client.destroy();
 });

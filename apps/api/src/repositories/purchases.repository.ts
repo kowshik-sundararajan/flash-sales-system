@@ -1,4 +1,4 @@
-import type { Redis } from "ioredis";
+import type { RedisClient } from "../bootstrap.js";
 import {
   PURCHASE_CODE,
   type Purchase,
@@ -62,26 +62,51 @@ export interface PurchasesRepository {
 }
 
 export class RedisPurchasesRepository implements PurchasesRepository {
-  constructor(private readonly redis: Redis) {}
+  constructor(
+    private readonly redis: RedisClient,
+    private readonly commandTimeoutMs = 200,
+  ) {}
 
   async purchase(saleId: SaleId, userId: UserId): Promise<PurchaseCode> {
-    const code = await this.redis.eval(
-      PURCHASE_SCRIPT,
-      3,
-      saleKeys.sale(saleId),
-      saleKeys.user(saleId, userId),
-      saleKeys.stream(saleId),
-      saleId,
-      userId,
+    const code = await withTimeout(
+      this.redis.eval(PURCHASE_SCRIPT, {
+        keys: [
+          saleKeys.sale(saleId),
+          saleKeys.user(saleId, userId),
+          saleKeys.stream(saleId),
+        ],
+        arguments: [saleId, userId],
+      }),
+      this.commandTimeoutMs,
     );
 
     return code as PurchaseCode;
   }
 
   async getPurchasedAt(saleId: SaleId, userId: UserId): Promise<number | null> {
-    const purchasedAt = await this.redis.get(saleKeys.user(saleId, userId));
+    const purchasedAt = await withTimeout(
+      this.redis.get(saleKeys.user(saleId, userId)),
+      this.commandTimeoutMs,
+    );
 
     return purchasedAt === null ? null : Number(purchasedAt);
+  }
+}
+
+async function withTimeout<T>(command: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      reject,
+      ms,
+      new Error(`Redis command timed out after ${ms}ms`),
+    );
+  });
+
+  try {
+    return await Promise.race([command, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

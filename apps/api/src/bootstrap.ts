@@ -1,4 +1,4 @@
-import { Redis } from "ioredis";
+import { createClient } from "redis";
 import { MongoClient } from "mongodb";
 
 export function createMongoClient(
@@ -13,11 +13,31 @@ export function createMongoClient(
   });
 }
 
-export function createRedisClient(url: string, timeoutMs = 200): Redis {
-  return new Redis(url, {
-    lazyConnect: true,
-    commandTimeout: timeoutMs,
-    connectTimeout: 1_000,
-    enableOfflineQueue: false,
+export function createRedisClient(
+  url: string,
+  onError: (error: Error) => void,
+  connectTimeoutMs = 1_000,
+) {
+  let everConnected = false;
+  const client = createClient({
+    url,
+    disableOfflineQueue: true, // fail fast while disconnected instead of queueing
+    socket: {
+      connectTimeout: connectTimeoutMs,
+      // Fail fast if Redis is unreachable at startup, but once we have been
+      // connected, keep reconnecting with a capped backoff.
+      reconnectStrategy: (retries, cause) =>
+        everConnected ? Math.min(retries * 50, 1_000) : cause,
+    },
   });
+
+  client.on("error", onError);
+
+  client.once("ready", () => {
+    everConnected = true;
+  });
+
+  return client;
 }
+
+export type RedisClient = ReturnType<typeof createRedisClient>;

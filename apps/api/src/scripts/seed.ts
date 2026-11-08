@@ -1,42 +1,43 @@
-import type { Redis } from "ioredis";
 import { loadConfig } from "../config.js";
-import { createMongoClient, createRedisClient } from "../bootstrap.js";
+import {
+  createMongoClient,
+  createRedisClient,
+  type RedisClient,
+} from "../bootstrap.js";
 import type { Sale } from "../models/sale.model.js";
 import {
   ensurePurchaseIndexes,
   PURCHASES_COLLECTION_NAME,
   saleKeys,
 } from "../repositories/purchases.repository.js";
+import { RedisPurchaseStream } from "../repositories/purchaseStream.repository.js";
 import {
   SALES_COLLECTION_NAME,
   type SaleDocument,
 } from "../repositories/sales.repository.js";
 
 async function seedRedisSale(
-  redis: Redis,
+  redis: RedisClient,
   sale: Pick<Sale, "id" | "startsAt" | "endsAt" | "stock">,
 ): Promise<void> {
   const stale: string[] = [];
-  for await (const keys of redis.scanStream({
-    match: saleKeys.all(sale.id),
-    count: 100,
+  for await (const keys of redis.scanIterator({
+    MATCH: saleKeys.all(sale.id),
+    COUNT: 100,
   })) {
-    stale.push(...(keys as string[]));
+    stale.push(...keys);
   }
 
-  const tx = redis.multi();
-  if (stale.length > 0) tx.del(...stale);
-  tx.hset(saleKeys.sale(sale.id), {
+  const query = redis.multi();
+  if (stale.length > 0) query.del(stale);
+  query.hSet(saleKeys.sale(sale.id), {
     startsAt: sale.startsAt,
     endsAt: sale.endsAt,
     stock: sale.stock.remaining,
   });
+  await query.exec();
 
-  const results = await tx.exec();
-  const failed = results?.find(([err]) => err);
-  if (!results || failed) {
-    throw new Error("failed to seed sale in Redis", { cause: failed?.[0] });
-  }
+  await new RedisPurchaseStream(redis).ensureConsumerGroup(sale.id);
 }
 
 async function main() {
@@ -54,7 +55,7 @@ async function main() {
   };
 
   const mongo = createMongoClient(config.dbUrl);
-  const redis = createRedisClient(config.redisUrl, 5_000);
+  const redis = createRedisClient(config.redisUrl, console.error);
   try {
     await Promise.all([mongo.connect(), redis.connect()]);
     const db = mongo.db();
@@ -71,7 +72,7 @@ async function main() {
     );
   } finally {
     await mongo.close();
-    await redis.quit().catch(() => redis.disconnect());
+    await redis.close().catch(() => redis.destroy());
   }
 }
 
