@@ -14,3 +14,9 @@ export const getPurchaseParamsSchema = z.strictObject({
 });
 
 export type GetPurchaseParams = z.infer<typeof getPurchaseParamsSchema>;
+
+export const purchaseStreamEntrySchema = z.object({
+  saleId: saleIdSchema,
+  userId: userIdSchema,
+  purchasedAt: z.coerce.number().int().positive(),
+});

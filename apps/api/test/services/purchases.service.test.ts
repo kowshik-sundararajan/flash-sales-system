@@ -3,17 +3,13 @@ import {
   PURCHASE_CODE,
   type PurchaseCode,
 } from "../../src/models/purchase.model.js";
-import type { PurchasesRepository } from "../../src/repositories/purchase.repository.js";
-import { saleIdSchema } from "../../src/schemas/sale.schema.js";
-import { userIdSchema } from "../../src/schemas/userId.schema.js";
+import type { PurchasesRepository } from "../../src/repositories/purchases.repository.js";
 import {
   PurchaseFailedError,
   PurchaseLookupFailedError,
   PurchasesService,
 } from "../../src/services/purchases.service.js";
-
-const SALE_ID = saleIdSchema.parse("8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f");
-const USER_ID = userIdSchema.parse("johndoe30");
+import { SALE_ID, USER_ID } from "../fixtures.js";
 
 function serviceWithRepo(
   purchase: PurchasesRepository["purchase"],

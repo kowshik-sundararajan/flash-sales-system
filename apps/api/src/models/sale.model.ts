@@ -1,7 +1,7 @@
 export interface Sale {
   id: string;
   product: Product;
-  stock: number;
+  stock: Stock;
   startsAt: number;
   endsAt: number;
 }
@@ -17,3 +17,8 @@ export enum SaleStatus {
   SOLD_OUT = "sold_out",
   ENDED = "ended",
 }
+
+export type Stock = {
+  initial: number;
+  remaining: number;
+};

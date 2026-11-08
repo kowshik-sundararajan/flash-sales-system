@@ -2,7 +2,11 @@ import type { Redis } from "ioredis";
 import { loadConfig } from "../config.js";
 import { createMongoClient, createRedisClient } from "../bootstrap.js";
 import type { Sale } from "../models/sale.model.js";
-import { saleKeys } from "../repositories/purchase.repository.js";
+import {
+  ensurePurchaseIndexes,
+  PURCHASES_COLLECTION_NAME,
+  saleKeys,
+} from "../repositories/purchases.repository.js";
 import {
   SALES_COLLECTION_NAME,
   type SaleDocument,
@@ -25,7 +29,7 @@ async function seedRedisSale(
   tx.hset(saleKeys.sale(sale.id), {
     startsAt: sale.startsAt,
     endsAt: sale.endsAt,
-    stock: sale.stock,
+    stock: sale.stock.remaining,
   });
 
   const results = await tx.exec();
@@ -44,7 +48,7 @@ async function main() {
   const sale: SaleDocument = {
     _id: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
     product: { id: "product-1", name: "Best Headphones" },
-    stock: 100,
+    stock: { initial: 100, remaining: 100 },
     startsAt,
     endsAt: startsAt + durationSeconds * 1000,
   };
@@ -53,10 +57,14 @@ async function main() {
   const redis = createRedisClient(config.redisUrl, 5_000);
   try {
     await Promise.all([mongo.connect(), redis.connect()]);
-    await mongo
-      .db()
+    const db = mongo.db();
+    await db
       .collection<SaleDocument>(SALES_COLLECTION_NAME)
       .replaceOne({ _id: sale._id }, sale, { upsert: true });
+    await ensurePurchaseIndexes(db);
+    await db
+      .collection(PURCHASES_COLLECTION_NAME)
+      .deleteMany({ saleId: sale._id });
     await seedRedisSale(redis, { ...sale, id: sale._id });
     console.log(
       `seeded ${sale._id} (Mongo + Redis): ${new Date(sale.startsAt).toISOString()} to ${new Date(sale.endsAt).toISOString()}`,

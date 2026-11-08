@@ -5,17 +5,18 @@ import {
   SaleNotFoundError,
   type SalesService,
 } from "../../src/services/sales.service.js";
+import { makeSale, SALE_ID } from "../fixtures.js";
 
 const MISSING_SALE_ID = "11111111-2222-4333-8444-555555555555";
-const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
 
+const sale = makeSale();
 const result = {
-  saleId: "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
+  saleId: sale.id,
   status: SaleStatus.ACTIVE,
-  startsAt: 1_000,
-  endsAt: 2_000,
-  stock: 10,
-  product: { id: "p1", name: "Best Headphones" },
+  startsAt: sale.startsAt,
+  endsAt: sale.endsAt,
+  stock: sale.stock,
+  product: sale.product,
 };
 
 function appWith(getStatus: SalesService["getStatus"]) {
@@ -38,9 +39,7 @@ describe("GET /api/sales/:saleId", () => {
   test("passes the same time reading to the service and the response", async () => {
     const getStatus = vi.fn().mockResolvedValue(result);
 
-    const res = await appWith(getStatus).inject(
-      "/api/sales/8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f",
-    );
+    const res = await appWith(getStatus).inject(`/api/sales/${SALE_ID}`);
 
     expect(getStatus).toHaveBeenCalledWith(SALE_ID, res.json().serverTime);
   });

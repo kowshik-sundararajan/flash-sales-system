@@ -1,5 +1,5 @@
 import type { Purchase, PurchaseResult } from "../models/purchase.model.js";
-import type { PurchasesRepository } from "../repositories/purchase.repository.js";
+import type { PurchasesRepository } from "../repositories/purchases.repository.js";
 import type { SaleId } from "../schemas/sale.schema.js";
 import type { UserId } from "../schemas/userId.schema.js";
 
@@ -32,7 +32,10 @@ export class PurchasesService {
     }
   }
 
-  async getPurchase(saleId: SaleId, userId: UserId): Promise<Purchase | null> {
+  async getPurchase(
+    saleId: SaleId,
+    userId: UserId,
+  ): Promise<Pick<Purchase, "purchasedAt"> | null> {
     try {
       const purchasedAt = await this.purchasesRepository.getPurchasedAt(
         saleId,

@@ -1,3 +1,6 @@
+import type { SaleId } from "../schemas/sale.schema.js";
+import type { UserId } from "../schemas/userId.schema.js";
+
 export const PURCHASE_CODE = {
   PURCHASED: "PURCHASED",
   ALREADY_PURCHASED: "ALREADY_PURCHASED",
@@ -9,7 +12,11 @@ export const PURCHASE_CODE = {
 
 export type PurchaseCode = (typeof PURCHASE_CODE)[keyof typeof PURCHASE_CODE];
 
-export type Purchase = { purchasedAt: number };
+export type Purchase = {
+  saleId: SaleId;
+  userId: UserId;
+  purchasedAt: number;
+};
 
 export type PurchaseResult = {
   code: PurchaseCode;

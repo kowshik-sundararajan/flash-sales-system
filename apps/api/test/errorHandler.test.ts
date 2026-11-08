@@ -2,8 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { PurchasesService } from "../src/services/purchases.service.js";
 import type { SalesService } from "../src/services/sales.service.js";
-
-const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
+import { SALE_ID, USER_ID } from "./fixtures.js";
 
 function appWith(
   overrides: {
@@ -42,7 +41,7 @@ describe("global error handler", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/sales/${SALE_ID}/purchases`,
-      payload: { userId: "johndoe30" },
+      payload: { userId: USER_ID },
     });
 
     expect(res.statusCode).toBe(500);

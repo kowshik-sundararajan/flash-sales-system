@@ -10,7 +10,7 @@ const SALE: SaleStatusResponse = {
   startsAt: 1_000,
   endsAt: 2_000,
   serverTime: 1_500,
-  stock: 7,
+  stock: { initial: 10, remaining: 7 },
   product: { id: "p1", name: "Best Headphones" },
 };
 

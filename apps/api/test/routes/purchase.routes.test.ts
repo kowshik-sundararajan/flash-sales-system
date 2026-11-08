@@ -5,16 +5,13 @@ import {
   type Purchase,
   type PurchaseCode,
 } from "../../src/models/purchase.model.js";
-import { saleIdSchema } from "../../src/schemas/sale.schema.js";
-import { userIdSchema } from "../../src/schemas/userId.schema.js";
 import {
   PurchaseFailedError,
   PurchaseLookupFailedError,
   type PurchasesService,
 } from "../../src/services/purchases.service.js";
+import { SALE_ID, USER_ID } from "../fixtures.js";
 
-const SALE_ID = "8f3c1d2e-5a4b-4c6d-9e7f-1a2b3c4d5e6f";
-const USER_ID = "johndoe30";
 const URL = `/api/sales/${SALE_ID}/purchases`;
 
 function purchaseReturning(code: PurchaseCode) {
@@ -139,13 +136,9 @@ describe("POST /api/sales/:saleId/purchases", () => {
   describe("failures", () => {
     test("500 with a generic body when the service fails, leaking nothing", async () => {
       const purchase = vi.fn<PurchasesService["purchase"]>().mockRejectedValue(
-        new PurchaseFailedError(
-          saleIdSchema.parse(SALE_ID),
-          userIdSchema.parse(USER_ID),
-          {
-            cause: new Error("redis://user:pw@internal-host"),
-          },
-        ),
+        new PurchaseFailedError(SALE_ID, USER_ID, {
+          cause: new Error("redis://user:pw@internal-host"),
+        }),
       );
 
       const res = await post(purchase, { userId: USER_ID });
@@ -162,7 +155,9 @@ describe("GET /api/sales/:saleId/purchases/:userId", () => {
   const PURCHASED_AT = 1_700_000_000_000;
   const GET_URL = `${URL}/${USER_ID}`;
 
-  function getPurchaseReturning(purchase: Purchase | null) {
+  function getPurchaseReturning(
+    purchase: Pick<Purchase, "purchasedAt"> | null,
+  ) {
     return vi.fn<PurchasesService["getPurchase"]>().mockResolvedValue(purchase);
   }
 
@@ -226,11 +221,9 @@ describe("GET /api/sales/:saleId/purchases/:userId", () => {
     const getPurchase = vi
       .fn<PurchasesService["getPurchase"]>()
       .mockRejectedValue(
-        new PurchaseLookupFailedError(
-          saleIdSchema.parse(SALE_ID),
-          userIdSchema.parse(USER_ID),
-          { cause: new Error("redis://user:pw@internal-host") },
-        ),
+        new PurchaseLookupFailedError(SALE_ID, USER_ID, {
+          cause: new Error("redis://user:pw@internal-host"),
+        }),
       );
 
     const res = await get(getPurchase);

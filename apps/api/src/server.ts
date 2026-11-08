@@ -4,7 +4,7 @@ import { createMongoClient, createRedisClient } from "./bootstrap.js";
 import { MongoSalesRepository } from "./repositories/sales.repository.js";
 import { SalesService } from "./services/sales.service.js";
 import { PurchasesService } from "./services/purchases.service.js";
-import { RedisPurchasesRepository } from "./repositories/purchase.repository.js";
+import { RedisPurchasesRepository } from "./repositories/purchases.repository.js";
 
 async function main() {
   const config = loadConfig(process.env);

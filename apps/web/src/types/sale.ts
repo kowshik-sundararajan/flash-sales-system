@@ -5,7 +5,7 @@ export interface SaleStatusResponse {
   status: SaleStatus;
   startsAt: number;
   endsAt: number;
-  stock: number;
+  stock: { initial: number; remaining: number };
   serverTime: number;
   product: { id: string; name: string };
 }
