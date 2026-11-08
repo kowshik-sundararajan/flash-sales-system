@@ -20,18 +20,24 @@ function renderText(status: SaleStatus, serverTime: number) {
 
 test("upcoming shows the countdown to the start", () => {
   expect(renderText("upcoming", STARTS_AT - 5_000)).toContain(
-    "Starts in 00:00:05",
+    "Starts in 00:05",
   );
 });
 
 test("active shows the countdown to the end", () => {
-  expect(renderText("active", ENDS_AT - 30_000)).toContain("Ends in 00:00:30");
+  expect(renderText("active", ENDS_AT - 30_000)).toContain("Ends in 00:30");
 });
 
-test("sold_out shows the sold out message and no countdown", () => {
+test("a countdown over an hour includes the hours", () => {
+  expect(renderText("active", ENDS_AT - 3_725_000)).toContain(
+    "Ends in 01:02:05",
+  );
+});
+
+test("sold_out says the product has sold out and shows no countdown", () => {
   const text = renderText("sold_out", STARTS_AT + 1_000);
 
-  expect(text).toContain("The product has sold out!");
+  expect(text).toContain("The product has sold out.");
   expect(text).not.toContain("Ends in");
 });
 

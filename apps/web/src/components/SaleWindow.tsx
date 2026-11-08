@@ -1,5 +1,16 @@
-import { formatDuration } from "../utils/helpers";
+import { formatCountdown } from "../utils/helpers";
 import type { SaleStatusResponse } from "../types/sale";
+import { Icon } from "./Icon";
+
+function Countdown({ label, ms }: { label: string; ms: number }) {
+  return (
+    <p className="countdown">
+      <Icon name="clock" className="countdown-icon" />
+      <span className="countdown-label">{label}</span>{" "}
+      <span className="countdown-time">{formatCountdown(ms)}</span>
+    </p>
+  );
+}
 
 export function SaleWindow({
   sale,
@@ -9,17 +20,16 @@ export function SaleWindow({
     "status" | "startsAt" | "endsAt" | "serverTime"
   >;
 }) {
-  return (
-    <>
-      <p>Status: {sale.status}</p>
-      {sale.status === "upcoming" && (
-        <p>Starts in {formatDuration(sale.startsAt - sale.serverTime)}</p>
-      )}
-      {sale.status === "active" && (
-        <p>Ends in {formatDuration(sale.endsAt - sale.serverTime)}</p>
-      )}
-      {sale.status === "sold_out" && <p>The product has sold out!</p>}
-      {sale.status === "ended" && <p>This sale has ended.</p>}
-    </>
-  );
+  switch (sale.status) {
+    case "upcoming":
+      return (
+        <Countdown label="Starts in" ms={sale.startsAt - sale.serverTime} />
+      );
+    case "active":
+      return <Countdown label="Ends in" ms={sale.endsAt - sale.serverTime} />;
+    case "sold_out":
+      return <p className="note">The product has sold out.</p>;
+    case "ended":
+      return <p className="note">This sale has ended.</p>;
+  }
 }

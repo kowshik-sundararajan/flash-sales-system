@@ -110,3 +110,34 @@ test("sets failed when the request throws, and clears it on retry", async () => 
   expect(result.current.failed).toBe(false);
   expect(result.current.code).toBe(PURCHASE_CODE.PURCHASED);
 });
+
+test("hides the result once the username changes, and brings it back for the same name", async () => {
+  postPurchaseMock.mockResolvedValue(PURCHASED);
+  const { result, rerender } = renderHook(
+    ({ userId }) => usePurchase(SALE_ID, userId),
+    { initialProps: { userId: USER_ID } },
+  );
+  await act(() => result.current.buy());
+  expect(result.current.code).toBe(PURCHASE_CODE.PURCHASED);
+
+  rerender({ userId: "someoneelse" });
+  expect(result.current.code).toBeUndefined();
+  expect(result.current.failed).toBe(false);
+
+  rerender({ userId: USER_ID });
+  expect(result.current.code).toBe(PURCHASE_CODE.PURCHASED);
+});
+
+test("a failed purchase is also hidden once the username changes", async () => {
+  postPurchaseMock.mockRejectedValue(new Error("purchase failed: 500"));
+  const { result, rerender } = renderHook(
+    ({ userId }) => usePurchase(SALE_ID, userId),
+    { initialProps: { userId: USER_ID } },
+  );
+  await act(() => result.current.buy());
+  expect(result.current.failed).toBe(true);
+
+  rerender({ userId: "someoneelse" });
+
+  expect(result.current.failed).toBe(false);
+});
