@@ -3,8 +3,7 @@ import {
   type BulkWriteResult,
   type WriteError,
 } from "mongodb";
-import { afterEach, describe, expect, test, vi } from "vitest";
-import { CommandTimeoutError } from "../../src/errors/errors.js";
+import { describe, expect, test, vi } from "vitest";
 import {
   PURCHASE_CODE,
   type Purchase,
@@ -40,7 +39,7 @@ describe("RedisPurchasesRepository", () => {
         `{sale:${SALE_ID}}:user:${USER_ID}`,
         `{sale:${SALE_ID}}:purchases`,
       ],
-      arguments: [SALE_ID, USER_ID, expect.any(String)],
+      arguments: [SALE_ID, USER_ID],
     });
   });
 
@@ -84,40 +83,6 @@ describe("RedisPurchasesRepository", () => {
         USER_ID,
       ),
     ).rejects.toBe(error);
-  });
-});
-
-describe("RedisPurchasesRepository deadline", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  test("tells the script when the API will have given up: now plus the timeout", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_700_000_000_000);
-    const evalFn = vi.fn().mockResolvedValue(PURCHASE_CODE.PURCHASED);
-
-    await new RedisPurchasesRepository(fakeRedis(evalFn), 750).purchase(
-      SALE_ID,
-      USER_ID,
-    );
-
-    expect(evalFn.mock.calls[0]![1].arguments).toEqual([
-      SALE_ID,
-      USER_ID,
-      "1700000000750",
-    ]);
-  });
-
-  test("a purchase the script refused as expired becomes a timeout, never a result", async () => {
-    const evalFn = vi.fn().mockResolvedValue("EXPIRED");
-
-    await expect(
-      new RedisPurchasesRepository(fakeRedis(evalFn)).purchase(
-        SALE_ID,
-        USER_ID,
-      ),
-    ).rejects.toBeInstanceOf(CommandTimeoutError);
   });
 });
 

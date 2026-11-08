@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { logSerializers } from "../../src/logger.js";
 import { buildApp } from "../../src/app.js";
 import type { PurchasesService } from "../../src/services/purchases.service.js";
 import type { SalesService } from "../../src/services/sales.service.js";
@@ -69,10 +70,10 @@ describe("global error handler", () => {
   });
 
   test("a 5xx error carrying its own statusCode is still hidden", async () => {
-    const err = Object.assign(new Error("upstream detail"), {
+    const error = Object.assign(new Error("upstream detail"), {
       statusCode: 502,
     });
-    const app = appWith({ getStatus: vi.fn().mockRejectedValue(err) });
+    const app = appWith({ getStatus: vi.fn().mockRejectedValue(error) });
 
     const res = await app.inject(`/api/sales/${SALE_ID}`);
 
@@ -93,6 +94,7 @@ describe("global error handler", () => {
       {
         logger: {
           level: "error",
+          serializers: logSerializers,
           stream: { write: (line: string) => logged.push(JSON.parse(line)) },
         },
       },

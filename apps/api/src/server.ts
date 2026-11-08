@@ -18,8 +18,8 @@ async function main() {
   const mongo = createMongoClient(config.dbUrl);
   const db = mongo.db();
 
-  const redis = createRedisClient(config.redisUrl, (err) =>
-    logger.error({ err }, "redis error"),
+  const redis = createRedisClient(config.redisUrl, (error) =>
+    logger.error({ error }, "redis error"),
   );
 
   const salesService = new SalesService(new MongoSalesRepository(db));
@@ -48,7 +48,7 @@ async function main() {
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
-        app.log.error({ err: result.reason }, "error closing connection");
+        app.log.error({ error: result.reason }, "error closing connection");
       }
     }
     app.log.info("shutdown complete");
@@ -63,15 +63,15 @@ async function main() {
     await redis.connect();
     app.log.info("connected to Redis");
     await app.listen({ host: config.host, port: config.port });
-  } catch (err) {
-    app.log.fatal({ err }, "failed to start");
+  } catch (error) {
+    app.log.fatal({ error }, "failed to start");
     await mongo.close().catch(() => {});
     await redis.close().catch(() => redis.destroy());
     process.exit(1);
   }
 }
 
-main().catch((err) => {
-  logger.fatal({ err }, "api crashed");
+main().catch((error) => {
+  logger.fatal({ error }, "api crashed");
   process.exit(1);
 });

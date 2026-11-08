@@ -192,10 +192,10 @@ describe("worker", () => {
         expect.any(Function),
       );
       const onError = vi.mocked(createRedisClient).mock.calls[0]![1];
-      const err = new Error("ECONNRESET");
-      onError(err);
+      const error = new Error("ECONNRESET");
+      onError(error);
 
-      expect(h.log.error).toHaveBeenCalledWith({ err }, "redis error");
+      expect(h.log.error).toHaveBeenCalledWith({ error }, "redis error");
     });
 
     test("logs a batch with the number of entries, and stays quiet when idle", async () => {
@@ -311,7 +311,7 @@ describe("worker", () => {
 
       expect(h.syncBatch).toHaveBeenCalledTimes(1);
       expect(h.log.error).toHaveBeenCalledWith(
-        { err: error, retryInMs: 1_000 },
+        { error, retryInMs: 1_000 },
         "sync failed",
       );
 
@@ -400,7 +400,7 @@ describe("worker", () => {
       await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
 
       expect(h.log.fatal).toHaveBeenCalledWith(
-        expect.objectContaining({ err: expect.any(Error) }),
+        expect.objectContaining({ error: expect.any(Error) }),
         "worker failed to start or crashed",
       );
       expect(createMongoClient).not.toHaveBeenCalled();

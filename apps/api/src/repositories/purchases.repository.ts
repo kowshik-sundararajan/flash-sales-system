@@ -1,5 +1,4 @@
 import type { RedisClient } from "../bootstrap.js";
-import { CommandTimeoutError } from "../errors/errors.js";
 import { withTimeout } from "../lib/withTimeout.js";
 import {
   PURCHASE_CODE,
@@ -10,11 +9,9 @@ import type { SaleId } from "../schemas/sale.schema.js";
 import type { UserId } from "../schemas/userId.schema.js";
 import { type Collection, type Db, MongoBulkWriteError } from "mongodb";
 
-const REQUEST_EXPIRED = "EXPIRED";
-
 const PURCHASE_SCRIPT = `
 local saleKey, userKey, streamKey = KEYS[1], KEYS[2], KEYS[3]
-local saleId, userId, deadline = ARGV[1], ARGV[2], tonumber(ARGV[3])
+local saleId, userId = ARGV[1], ARGV[2]
 
 -- 1. Is the sale configured?
 local saleFields = redis.call('HMGET', saleKey, 'startsAt', 'endsAt', 'stock')
@@ -22,32 +19,26 @@ if not saleFields[1] or not saleFields[2] or not saleFields[3] then
   return '${PURCHASE_CODE.NOT_CONFIGURED}'
 end
 
--- 2. Has the API already given up on this request? If Redis was stalled, the
--- request may only be running now. The API told the user "unavailable", so
--- committing the purchase would contradict that.
+-- 2. Is the purchase within the sale window? (Redis clock only)
 local redisTime = redis.call('TIME')
 local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
-if now > deadline then return '${REQUEST_EXPIRED}' end
-
--- 3. Is the purchase within the sale window?
 if now < tonumber(saleFields[1]) then return '${PURCHASE_CODE.NOT_STARTED}' end
 if now >= tonumber(saleFields[2]) then return '${PURCHASE_CODE.ENDED}' end
 
--- 4. Has the user already purchased the item?
+-- 3. Has the user already purchased the item?
 if redis.call('EXISTS', userKey) == 1 then
   return '${PURCHASE_CODE.ALREADY_PURCHASED}'
 end
 
--- 5. Is there enough stock?
+-- 4. Is there enough stock?
 if tonumber(saleFields[3]) <= 0 then return '${PURCHASE_CODE.SOLD_OUT}' end
 
--- 6. Commit the purchase
+-- 5. Commit the purchase
 redis.call('HINCRBY', saleKey, 'stock', -1)
 redis.call('SET', userKey, now)
 
--- 7. Append to redis stream
+-- 6. Append to redis stream
 redis.call('XADD', streamKey, '*', 'saleId', saleId, 'userId', userId, 'purchasedAt', now)
-
 
 return '${PURCHASE_CODE.PURCHASED}'
 `;
@@ -76,9 +67,8 @@ export class RedisPurchasesRepository implements PurchasesRepository {
     private readonly commandTimeoutMs = 1_000,
   ) {}
 
+  // If the timeout fires the outcome is unknown, and a retry returns ALREADY_PURCHASED.
   async purchase(saleId: SaleId, userId: UserId): Promise<PurchaseCode> {
-    const deadline = Date.now() + this.commandTimeoutMs;
-
     const code = await withTimeout(
       this.redis.eval(PURCHASE_SCRIPT, {
         keys: [
@@ -86,16 +76,11 @@ export class RedisPurchasesRepository implements PurchasesRepository {
           saleKeys.user(saleId, userId),
           saleKeys.stream(saleId),
         ],
-        arguments: [saleId, userId, String(deadline)],
+        arguments: [saleId, userId],
       }),
       this.commandTimeoutMs,
     );
 
-    if (code === REQUEST_EXPIRED) {
-      throw new CommandTimeoutError(
-        "purchase expired before Redis executed it",
-      );
-    }
     return code as PurchaseCode;
   }
 

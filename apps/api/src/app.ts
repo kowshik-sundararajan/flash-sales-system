@@ -26,8 +26,8 @@ export function buildApp(
     try {
       await deps.checkDependencies();
       return { status: "ok" };
-    } catch (err) {
-      request.log.error({ err }, "health check failed");
+    } catch (error) {
+      request.log.error({ error }, "health check failed");
       return reply.code(503).send({ status: "unavailable" });
     }
   });

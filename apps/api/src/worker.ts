@@ -22,8 +22,8 @@ async function main() {
   const log = logger.child({ consumer, saleId });
 
   const mongo = createMongoClient(config.dbUrl);
-  const redis = createRedisClient(config.redisUrl, (err) =>
-    log.error({ err }, "redis error"),
+  const redis = createRedisClient(config.redisUrl, (error) =>
+    log.error({ error }, "redis error"),
   );
   const abort = new AbortController();
   const stop = (signal: string) => {
@@ -65,12 +65,14 @@ async function main() {
           log.info({ numSyncedEntries }, "synced batch");
       } catch (error) {
         // The batch stays unacknowledged, so it is retried after a pause.
-        log.error({ err: error, retryInMs: RETRY_DELAY_MS }, "sync failed");
+        log.error({ error, retryInMs: RETRY_DELAY_MS }, "sync failed");
 
         if (isMissingConsumerGroup(error)) {
           await purchaseStream
             .ensureConsumerGroup(saleId)
-            .catch((err) => log.error({ err }, "could not recreate the group"));
+            .catch((groupError) =>
+              log.error({ error: groupError }, "could not recreate the group"),
+            );
         }
 
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
@@ -87,7 +89,7 @@ async function main() {
 const isMissingConsumerGroup = (error: unknown) =>
   error instanceof Error && error.message.includes("NOGROUP");
 
-main().catch((err) => {
-  logger.fatal({ err }, "worker failed to start or crashed");
+main().catch((error) => {
+  logger.fatal({ error }, "worker failed to start or crashed");
   process.exit(1);
 });
