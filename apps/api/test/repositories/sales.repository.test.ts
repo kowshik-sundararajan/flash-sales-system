@@ -52,6 +52,116 @@ describe("SalesRepository", () => {
     });
   });
 
+  describe("findById cache", () => {
+    const TTL_MS = 1_000;
+    const OTHER_SALE_ID = "11111111-2222-4333-8444-555555555555";
+
+    function cachedRepo(
+      findOne: ReturnType<typeof vi.fn>,
+      options: { maxItems?: number } = {},
+    ) {
+      let now = 0;
+      const { db } = fakeDb({ findOne });
+      const repository = new MongoSalesRepository(db, {
+        ttl: TTL_MS,
+        now: () => now,
+        ...options,
+      });
+      return {
+        repository,
+        advance: (ms: number) => {
+          now += ms;
+        },
+      };
+    }
+
+    test("a second call within the TTL does not reach Mongo", async () => {
+      const findOne = vi.fn().mockResolvedValue(makeSaleDocument());
+      const { repository, advance } = cachedRepo(findOne);
+
+      await repository.findById(SALE_ID);
+      advance(TTL_MS - 1);
+      await repository.findById(SALE_ID);
+
+      expect(findOne).toHaveBeenCalledTimes(1);
+    });
+
+    test("after the TTL it reads Mongo again and returns the new value", async () => {
+      const findOne = vi
+        .fn()
+        .mockResolvedValueOnce(makeSaleDocument())
+        .mockResolvedValueOnce(
+          makeSaleDocument({ stock: { initial: 10, remaining: 3 } }),
+        );
+      const { repository, advance } = cachedRepo(findOne);
+
+      await repository.findById(SALE_ID);
+      advance(TTL_MS);
+      const sale = await repository.findById(SALE_ID);
+
+      expect(findOne).toHaveBeenCalledTimes(2);
+      expect(sale?.stock.remaining).toBe(3);
+    });
+
+    test("a missing sale is not cached", async () => {
+      const findOne = vi.fn().mockResolvedValue(null);
+      const { repository } = cachedRepo(findOne);
+
+      await repository.findById(SALE_ID);
+      await repository.findById(SALE_ID);
+
+      expect(findOne).toHaveBeenCalledTimes(2);
+    });
+
+    test("an error is not cached: the next call retries", async () => {
+      const findOne = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("mongo down"))
+        .mockResolvedValueOnce(makeSaleDocument());
+      const { repository } = cachedRepo(findOne);
+
+      await expect(repository.findById(SALE_ID)).rejects.toThrow("mongo down");
+      const retry = await repository.findById(SALE_ID);
+
+      expect(findOne).toHaveBeenCalledTimes(2);
+      expect(retry?.id).toBe(SALE_ID);
+    });
+
+    test("past the size limit the oldest sale is evicted", async () => {
+      const findOne = vi.fn(async ({ _id }: { _id: string }) =>
+        makeSaleDocument({ _id }),
+      );
+      const { repository } = cachedRepo(findOne, { maxItems: 2 });
+
+      await repository.findById("sale-1");
+      await repository.findById("sale-2");
+      await repository.findById("sale-3");
+      findOne.mockClear();
+      await repository.findById("sale-2");
+      await repository.findById("sale-3");
+      await repository.findById("sale-1");
+
+      expect(findOne).toHaveBeenCalledTimes(1);
+      expect(findOne).toHaveBeenCalledWith({ _id: "sale-1" });
+    });
+
+    test("different sales are cached separately", async () => {
+      const findOne = vi.fn(async ({ _id }: { _id: string }) =>
+        makeSaleDocument({ _id }),
+      );
+      const { repository } = cachedRepo(findOne);
+
+      const first = await repository.findById(SALE_ID);
+      const second = await repository.findById(OTHER_SALE_ID);
+      await repository.findById(SALE_ID);
+      await repository.findById(OTHER_SALE_ID);
+
+      expect(findOne).toHaveBeenCalledTimes(2);
+      expect(first?.id).toBe(SALE_ID);
+      expect(second?.id).toBe(OTHER_SALE_ID);
+    });
+  });
+
   describe("setRemainingStockFromPurchaseCount", () => {
     test("updates the sale by _id", async () => {
       const updateOne = vi.fn().mockResolvedValue({ modifiedCount: 1 });

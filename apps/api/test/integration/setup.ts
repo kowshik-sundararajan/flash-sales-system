@@ -70,7 +70,8 @@ export default async function setup(project: TestProject) {
   const db = mongo.db();
   await ensurePurchaseIndexes(db);
 
-  const salesRepository = new MongoSalesRepository(db);
+  // No cache, so assertions about the stock in Mongo are not delayed.
+  const salesRepository = new MongoSalesRepository(db, { ttl: 0 });
   const purchasesRepository = new MongoPurchasesRepository(db);
   const stream = new RedisPurchaseStream(redis, 50, 200);
 

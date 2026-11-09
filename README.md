@@ -128,6 +128,8 @@ A purchase is decided entirely in Redis; workers copy it to Mongo afterwards. Th
 
 `status` is `upcoming`, `active`, `sold_out` or `ended`. Times are epoch milliseconds. Errors: 404 `sale_not_found`, 400 `invalid_request`, 503.
 
+The sale is cached for 1 s in each API instance, so `stock.remaining` can be 1 s old. `status` and `serverTime` are computed per request.
+
 #### `POST /api/sales/:saleId/purchases`
 
 Body: `{"userId": "alice"}`. The answer is always `{"code": "..."}`.
@@ -182,6 +184,14 @@ Redis keys for a sale share the hash tag `{sale:<id>}`.
 - Node.js 26.13 (see `.nvmrc`), only for running the tests outside Docker.
 
 ### Start
+
+Either:
+
+```bash
+npm run start
+```
+
+or
 
 ```bash
 docker compose up --build
@@ -270,17 +280,19 @@ The bars are the measured p95 (surge 104 ms, watchers 114 ms). The line is the t
 | Delete acked stream entries                       | **Bounded memory and capacity:** Redis stays small so the hot path stays fast. **Single source of truth:** Mongo is the permanent record, and Redis is a transient buffer                                                                                                                                                                                                                                                                                 | No audit trail or replay from Redis                                                                                                |
 | No deadline on the purchase script                | **Simplicity and one clock:** the script uses only Redis `TIME`. An earlier version also compared it with a deadline from the API host's clock, which ties correctness to clock sync between hosts                                                                                                                                                                                                                                                        | A timed-out request has an unknown outcome. Covered by idempotent retries (one per user) and the web app's follow-up check         |
 | Idempotent seed                                   | **Durability:** restarting the stack keeps a running sale and its purchases. **Usability:** an ended or missing sale is recreated, so there is always a sale to try                                                                                                                                                                                                                                                                                       | Changing `SALE_*` needs an explicit `npm run start`                                                                                |
+| Sale status from Mongo behind a 1 s cache         | Polling would otherwise read Mongo once per page per second. The cache limits it to about one read per second per API instance.                                                                                                                                                                                                                                                                                                                           | Stock on screen can be 1 s old.                                                                                                    |
 
 ## 6. Improvements
 
 Known gaps, and what I would do about each. None of these is built.
 
-| Gap                                              | Improvement                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity                                         | Real identity (login) and per-user limits                                                                                                                                                                                                                                                                                                                                                            |
-| Idempotency                                      | `Idempotency-Key` header if the rule ever allows several items per user                                                                                                                                                                                                                                                                                                                              |
-| Each worker syncs one static sale ID             | Workers discover active sales from Mongo                                                                                                                                                                                                                                                                                                                                                             |
-| Dead-letter stream handling                      | Alerting and reconciliation strategy                                                                                                                                                                                                                                                                                                                                                                 |
-| Single Redis and MongoDB nodes                   | Run on Redis Cluster and a Mongo replica set:<br>• **Redis Cluster:** removes the single Redis node as a point of failure and spreads many concurrent sales across nodes. One sale still runs on one shard.<br>• **Mongo replica set:** purchases stay safe if the primary is lost, and the sale page can read from secondaries.                                                                     |
-| Push instead of poll for Sale status (using SSE) | Every web client polls once a second, and each poll reads from Mongo. Push updates with server-sent events instead: each API replica reads the sale once a second (the live stock from the Redis sale hash, the product details from Mongo) and streams it to every connected web client, with polling as a fallback. Mongo load then depends on the number of replicas, not the number of watchers. |
-| No end-to-end tests of the UI                    | Browser tests (for example Playwright)                                                                                                                                                                                                                                                                                                                                                               |
+| Gap                                  | Improvement                                                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity                             | Real identity (login) and per-user limits                                                                                                                 |
+| Idempotency                          | `Idempotency-Key` header if the rule ever allows several items per user                                                                                   |
+| Each worker syncs one static sale ID | Workers discover active sales from Mongo                                                                                                                  |
+| Dead-letter stream handling          | Alerting and reconciliation strategy                                                                                                                      |
+| Single Redis and MongoDB nodes       | Run Redis Cluster and a Mongo replica set. Purchases already fit a cluster, since a sale's keys share one hash tag. One hot sale still runs on one shard. |
+| Sale status is polled                | Push updates with server-sent events instead. Each API instance reads the sale about every 500 ms and streams changes to its clients.                     |
+| Sale status needs Mongo              | Read stock and times from the Redis sale hash. This is fresher and survives a Mongo outage.                                                               |
+| No end-to-end tests of the UI        | Browser tests (for example Playwright)                                                                                                                    |

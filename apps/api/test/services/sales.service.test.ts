@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MongoNetworkError } from "mongodb";
 import { SaleStatus } from "../../src/models/sale.model.js";
-import type { SalesRepository } from "../../src/repositories/sales.repository.js";
+import {
+  MongoSalesRepository,
+  type SalesRepository,
+} from "../../src/repositories/sales.repository.js";
+import { fakeDb } from "../helper.js";
+import { makeSaleDocument } from "../fixtures.js";
 import {
   getSaleStatus,
   SaleNotFoundError,
@@ -143,6 +148,25 @@ describe("SalesService", () => {
       const repo = repoWith(vi.fn().mockRejectedValue(bug));
 
       await expect(new SalesService(repo).getStatus(SALE_ID)).rejects.toBe(bug);
+    });
+  });
+
+  describe("with the sale served from the repository cache", () => {
+    test("upcoming becomes active exactly at startsAt, without another Mongo read", async () => {
+      const findOne = vi
+        .fn()
+        .mockResolvedValue(
+          makeSaleDocument({ startsAt: 1_000, endsAt: 2_000 }),
+        );
+      const { db } = fakeDb({ findOne });
+      const service = new SalesService(new MongoSalesRepository(db));
+
+      const before = await service.getStatus(SALE_ID, 999);
+      const at = await service.getStatus(SALE_ID, 1_000);
+
+      expect(before.status).toBe(SaleStatus.UPCOMING);
+      expect(at.status).toBe(SaleStatus.ACTIVE);
+      expect(findOne).toHaveBeenCalledTimes(1);
     });
   });
 });
